@@ -8,7 +8,7 @@ The design doc is at `.claude/docs/design/Zero_G_Salvage_Reconciled_Prototype_Ha
 
 ```sh
 npm install
-npm run dev        # http://localhost:5173 — needs a WebGPU browser (Chrome/Edge)
+npm run dev        # http://localhost:5180 — needs a WebGPU browser (Chrome/Edge)
 npm run typecheck
 npm run smoke -- <outDir> "autotest=all"   # headless Chrome run with scripted scenarios + screenshots
 ```
