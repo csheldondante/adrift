@@ -1,0 +1,63 @@
+// lil-gui tuning panel bound directly to `tune`, plus debug actions.
+
+import GUI from 'lil-gui';
+import { tune } from '../config';
+
+export interface DebugActions {
+  restart(): void;
+  detonateNearAim(): void;
+}
+
+export function createDebugPanel(actions: DebugActions): GUI {
+  const gui = new GUI({ title: 'Tuning (` to toggle)', width: 300 });
+  gui.add(actions, 'restart').name('Restart (R)');
+  gui.add(actions, 'detonateNearAim').name('Detonate fuel nearest aim');
+
+  const d = gui.addFolder('Debug');
+  d.add(tune.debug, 'showColliders').name('collider outlines');
+  d.add(tune.debug, 'showField').name('gas/heat field');
+
+  const s = gui.addFolder('Ship');
+  s.add(tune.ship, 'thrust', 0, 10000, 50);
+  s.add(tune.ship, 'reverseThrust', 0, 10000, 50);
+  s.add(tune.ship, 'torque', 0, 4000, 10);
+  s.add(tune.ship, 'density', 20, 600, 5).name('density (restart)');
+  s.add(tune.ship, 'rotationAssist');
+  s.add(tune.ship, 'rotationAssistStrength', 0, 20, 0.1);
+
+  const g = gui.addFolder('Grapple');
+  g.add(tune.grapple, 'maxLength', 4, 60, 0.5);
+  g.add(tune.grapple, 'reelSpeed', 0.5, 30, 0.5);
+
+  const c = gui.addFolder('Cutter');
+  c.add(tune.cutter, 'radius', 0.15, 2.5, 0.05);
+  c.add(tune.cutter, 'damagePerSecond', 20, 3000, 10);
+  c.add(tune.cutter, 'range', 2, 40, 0.5);
+  c.add(tune.cutter, 'heat', 0, 6, 0.05);
+
+  const gs = gui.addFolder('Gas / heat');
+  gs.add(tune.gas, 'stiffness', 50, 3000, 10);
+  gs.add(tune.gas, 'damping', 0.9, 1, 0.001);
+  gs.add(tune.gas, 'pushStrength', 0, 100, 0.5).name('vent push');
+  gs.add(tune.gas, 'heatDiffusion', 0, 10, 0.1);
+  gs.add(tune.gas, 'heatDecay', 0, 3, 0.01);
+
+  const h = gui.addFolder('Hazard');
+  h.add(tune.hazard, 'enabled');
+  h.add(tune.hazard, 'explosionRadius', 0.5, 8, 0.1);
+  h.add(tune.hazard, 'explosionDamage', 0, 3000, 10);
+  h.add(tune.hazard, 'explosionImpulse', 0, 4000, 10);
+  h.add(tune.hazard, 'explosionGas', 0, 20, 0.1);
+  h.add(tune.hazard, 'explosionHeat', 0, 20, 0.1);
+  h.add(tune.hazard, 'ignitionHeat', 0.2, 10, 0.05);
+
+  const p = gui.addFolder('Pixels');
+  p.add(tune.pixel, 'debrisMinCells', 1, 200, 1);
+
+  for (const f of [s, g, c, gs, h, p]) f.close();
+  gui.hide();
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Backquote') gui.show(gui._hidden);
+  });
+  return gui;
+}

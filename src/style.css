@@ -1,0 +1,186 @@
+:root {
+  --hud-fg: #d8e3f0;
+  --hud-dim: #7d8ba0;
+  --hud-accent: #2bd4a0;
+  --hud-warn: #ff8a3a;
+  --hud-panel: rgba(8, 12, 22, 0.62);
+  --font: ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #030409;
+  color: var(--hud-fg);
+  font-family: var(--font);
+}
+#app,
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  cursor: crosshair;
+}
+.fatal {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-size: 18px;
+  line-height: 1.6;
+}
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font-size: 13px;
+  text-shadow: 0 1px 2px #000;
+}
+.hud-objective {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  padding: 8px 12px;
+  background: var(--hud-panel);
+  border-left: 3px solid var(--hud-accent);
+}
+.hud-objective .time {
+  margin-left: 14px;
+  color: var(--hud-dim);
+}
+.hud-health {
+  position: absolute;
+  bottom: 18px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--hud-dim);
+}
+.hud-health-bar {
+  width: 180px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.hud-health-fill {
+  height: 100%;
+  width: 100%;
+  transition: width 0.15s;
+}
+.hud-stats {
+  position: absolute;
+  bottom: 40px;
+  left: 16px;
+  font-size: 16px;
+}
+.hud-stats small {
+  color: var(--hud-dim);
+  font-size: 11px;
+}
+.hud-vel {
+  position: absolute;
+  bottom: 44px;
+  left: 120px;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+}
+.hud-vel-arrow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 20px;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--hud-accent);
+  transform-origin: 0 50%;
+}
+.hud-tools {
+  position: absolute;
+  bottom: 18px;
+  right: 16px;
+  text-align: right;
+  line-height: 1.6;
+}
+.hud-tools span {
+  color: var(--hud-dim);
+  margin-left: 6px;
+}
+.hud-help {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  background: var(--hud-panel);
+  color: var(--hud-dim);
+  line-height: 1.6;
+  text-align: center;
+  font-size: 12px;
+}
+.hud-help b {
+  color: var(--hud-fg);
+}
+.hidden {
+  display: none;
+}
+.hud-banner {
+  display: none;
+  position: absolute;
+  top: 30%;
+  left: 0;
+  right: 0;
+  text-align: center;
+}
+.hud-banner .title {
+  font-size: 44px;
+  letter-spacing: 6px;
+  font-weight: bold;
+}
+.hud-banner .sub {
+  margin-top: 8px;
+  color: var(--hud-dim);
+}
+.hud-banner.win .title {
+  color: var(--hud-accent);
+  text-shadow: 0 0 24px rgba(43, 212, 160, 0.7);
+  animation: pop 0.6s ease-out;
+}
+.hud-banner.lose .title {
+  color: var(--hud-warn);
+}
+@keyframes pop {
+  from {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+.hud-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+.hud-marker i {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-right: 4px;
+  border-left: 9px solid currentColor;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  vertical-align: middle;
+}
+.hud-marker.salvage {
+  color: #4fe3d6;
+}
+.hud-marker.zone {
+  color: var(--hud-accent);
+}
+.lil-gui {
+  --font-family: var(--font);
+}

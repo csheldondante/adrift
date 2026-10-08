@@ -1,0 +1,126 @@
+// Shared base for anything made of pixel cells: static terrain and dynamic pixel bodies.
+// Owns the grid, its CPU color buffer + GPU texture, the display mesh, and the local<->world
+// transform (cells are CELL meters; local origin = grid bottom-left corner).
+//
+// Likely growth: a custom node material (per-cell emissive/heat glow, normal-ish edge
+// lighting) reading a material-id texture instead of baked RGBA. Painting is isolated in
+// `paint()` so that swap only touches this file.
+
+import * as THREE from 'three/webgpu';
+import { CELL } from '../config';
+import { cellColor, MAT_HP } from './materials';
+import { PixelGrid, type Rect } from './PixelGrid';
+import type { PhysOwner } from '../physics/Physics';
+
+export abstract class PixelObject implements PhysOwner {
+  abstract readonly kind: 'terrain' | 'pixelBody';
+  readonly texture: THREE.DataTexture;
+  readonly mesh: THREE.Mesh;
+  private readonly pixels: Uint32Array;
+  private textureDirty = false;
+
+  // cached transform, refreshed by syncTransform()
+  px = 0;
+  py = 0;
+  angle = 0;
+  cos = 1;
+  sin = 0;
+
+  constructor(
+    readonly grid: PixelGrid,
+    renderOrder: number,
+  ) {
+    const data = new Uint8Array(grid.w * grid.h * 4);
+    this.pixels = new Uint32Array(data.buffer);
+    this.texture = new THREE.DataTexture(data, grid.w, grid.h, THREE.RGBAFormat);
+    this.texture.magFilter = THREE.NearestFilter;
+    this.texture.minFilter = THREE.NearestFilter;
+    this.texture.colorSpace = THREE.SRGBColorSpace;
+    const geo = new THREE.PlaneGeometry(grid.w * CELL, grid.h * CELL);
+    geo.translate((grid.w * CELL) / 2, (grid.h * CELL) / 2, 0);
+    const mat = new THREE.MeshBasicMaterial({ map: this.texture, transparent: true, alphaTest: 0.5, depthTest: false, depthWrite: false });
+    this.mesh = new THREE.Mesh(geo, mat);
+    this.mesh.renderOrder = renderOrder;
+    this.mesh.frustumCulled = false;
+    this.paint({ x0: 0, y0: 0, x1: grid.w, y1: grid.h });
+  }
+
+  /** Recomputes display colors for a cell region. */
+  paint(r: Rect): void {
+    const { grid, pixels } = this;
+    const x0 = Math.max(0, r.x0);
+    const y0 = Math.max(0, r.y0);
+    const x1 = Math.min(grid.w, r.x1);
+    const y1 = Math.min(grid.h, r.y1);
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        const i = y * grid.w + x;
+        const m = grid.mat[i];
+        const max = MAT_HP[m];
+        pixels[i] = cellColor(m, grid.shade[i], max > 0 ? grid.hp[i] / max : 1);
+      }
+    }
+    this.textureDirty = true;
+  }
+
+  /** Uploads painted changes. Call once per frame before rendering. */
+  syncVisual(): void {
+    if (this.textureDirty) {
+      this.texture.needsUpdate = true;
+      this.textureDirty = false;
+    }
+    this.mesh.position.set(this.px, this.py, 0);
+    this.mesh.rotation.z = this.angle;
+  }
+
+  protected setTransform(px: number, py: number, angle: number): void {
+    this.px = px;
+    this.py = py;
+    this.angle = angle;
+    this.cos = Math.cos(angle);
+    this.sin = Math.sin(angle);
+  }
+
+  abstract syncTransform(): void;
+
+  /** World meters -> local cell coordinates (fractional). */
+  worldToLocal(wx: number, wy: number, out: { x: number; y: number }): { x: number; y: number } {
+    const dx = wx - this.px;
+    const dy = wy - this.py;
+    out.x = (this.cos * dx + this.sin * dy) / CELL;
+    out.y = (-this.sin * dx + this.cos * dy) / CELL;
+    return out;
+  }
+
+  /** Local cell coordinates -> world meters. */
+  localToWorld(cx: number, cy: number, out: { x: number; y: number }): { x: number; y: number } {
+    const lx = cx * CELL;
+    const ly = cy * CELL;
+    out.x = this.px + this.cos * lx - this.sin * ly;
+    out.y = this.py + this.sin * lx + this.cos * ly;
+    return out;
+  }
+
+  /** Rotates a world direction into local space (unit-preserving). */
+  dirToLocal(dx: number, dy: number, out: { x: number; y: number }): { x: number; y: number } {
+    out.x = this.cos * dx + this.sin * dy;
+    out.y = -this.sin * dx + this.cos * dy;
+    return out;
+  }
+
+  /** Conservative world-space bounding circle (center + radius) of the grid. */
+  boundingCircle(out: { x: number; y: number; r: number }): { x: number; y: number; r: number } {
+    const hw = (this.grid.w * CELL) / 2;
+    const hh = (this.grid.h * CELL) / 2;
+    this.localToWorld(this.grid.w / 2, this.grid.h / 2, out);
+    out.r = Math.hypot(hw, hh);
+    return out;
+  }
+
+  dispose(): void {
+    this.texture.dispose();
+    this.mesh.geometry.dispose();
+    (this.mesh.material as THREE.Material).dispose();
+    this.mesh.removeFromParent();
+  }
+}
