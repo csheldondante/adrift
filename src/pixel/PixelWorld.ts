@@ -101,6 +101,33 @@ export class PixelWorld {
     return destroyed;
   }
 
+  /**
+   * Paints terrain material into a cell rect at runtime (sealing bulkheads, turret housings)
+   * and keeps colliders, visuals and the gas wall mask in sync. With onlyEmpty, existing
+   * matter is left alone. Returns the number of cells changed.
+   */
+  paintTerrain(x0: number, y0: number, x1: number, y1: number, mat: number, onlyEmpty = true): number {
+    const g = this.terrain.grid;
+    x0 = Math.max(0, Math.floor(x0));
+    y0 = Math.max(0, Math.floor(y0));
+    x1 = Math.min(g.w, Math.ceil(x1));
+    y1 = Math.min(g.h, Math.ceil(y1));
+    let n = 0;
+    for (let y = y0; y < y1; y++)
+      for (let x = x0; x < x1; x++) {
+        if (onlyEmpty && g.mat[y * g.w + x] !== 0) continue;
+        g.set(x, y, mat);
+        n++;
+      }
+    if (n) {
+      const r = { x0, y0, x1, y1 };
+      this.terrain.paint(r);
+      this.terrain.markCollidersDirty(r);
+      this.events.terrainChanged?.(r);
+    }
+    return n;
+  }
+
   /** Adds visual heat (glow) to all pixel matter in a world-space circle. */
   heatCircle(wx: number, wy: number, radius: number, amount: number): void {
     const heat = (o: PixelObject) => {

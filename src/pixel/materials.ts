@@ -14,6 +14,9 @@ export const M = {
   LIGHT: 8, // emissive fixture (cosmetic), soft
   PISTON: 9, // machine steel: indestructible
   STRIPE: 10, // machine hazard striping: indestructible
+  EYE: 11, // robot sensor: brittle, glowing; a robot dies when its eyes are gone
+  BULKHEAD: 12, // emergency door slab: tough but cuttable
+  TURRET: 13, // wall turret housing: cuttable
 } as const;
 export type MaterialId = (typeof M)[keyof typeof M];
 
@@ -47,6 +50,9 @@ const DEFS: MaterialDef[] = [
   { id: M.LIGHT, name: 'light', color: [255, 214, 140], variation: 0.05, hp: 20, armor: 1, density: 30, flags: F.SOLID | F.EMISSIVE },
   { id: M.PISTON, name: 'piston', color: [138, 142, 152], variation: 0.06, hp: 1, armor: 0, density: 200, flags: F.SOLID },
   { id: M.STRIPE, name: 'stripe', color: [214, 172, 40], variation: 0.05, hp: 1, armor: 0, density: 200, flags: F.SOLID },
+  { id: M.EYE, name: 'eye', color: [255, 60, 50], variation: 0.08, hp: 10, armor: 1, density: 30, flags: F.SOLID | F.EMISSIVE },
+  { id: M.BULKHEAD, name: 'bulkhead', color: [150, 132, 70], variation: 0.08, hp: 160, armor: 1, density: 90, flags: F.SOLID },
+  { id: M.TURRET, name: 'turret', color: [70, 76, 92], variation: 0.1, hp: 70, armor: 1, density: 80, flags: F.SOLID },
 ];
 
 export const MAT_FLAGS = new Uint8Array(256);

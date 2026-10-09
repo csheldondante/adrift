@@ -9,7 +9,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const m = (c: number) => c * CELL;
 
 export async function runAutotest(mode: string, game: () => Game, input: Input, restart: () => void): Promise<void> {
-  const log = (...a: unknown[]) => console.log('[autotest]', ...a);
+  // stringify: the console preview truncates objects to their first few properties
+  const log = (...a: unknown[]) => console.log('[autotest]', ...a.map((v) => (typeof v === 'object' ? JSON.stringify(v) : v)));
   const place = (x: number, y: number, angle = 0) => {
     const b = game().ship.body;
     b.setTranslation({ x, y }, true);
@@ -331,6 +332,82 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         moverMoved: +Math.hypot(m1.x - m0.x, m1.y - m0.y).toFixed(2),
         health: Math.round(g.ship.health),
       });
+    }
+    if (md === 'spot' || md === 'sneak') {
+      // in front of a security bot's eye: alarm. Behind it: no alarm.
+      const g = game();
+      const bot = g.security.robots.find((r) => r.pb.tags.label === 'securityBot')!;
+      const front = md === 'spot';
+      const t0 = performance.now();
+      let tAlarm = -1;
+      let maxSusp = 0;
+      // park once on a free spot 7 m in front of (or behind) the eye, then keep hands off
+      const c = bot.pos;
+      const a = bot.pb.body.rotation() + (front ? 0 : Math.PI);
+      // nearest angle to the preferred one with a clear line and an empty ship-sized footprint
+      const grid = g.pixels.terrain.grid;
+      const roomy = (x: number, y: number) => {
+        for (let oy = -1.6; oy <= 1.6; oy += 0.4) for (let ox = -1.6; ox <= 1.6; ox += 0.4) if (grid.solid(Math.floor((x + ox) / CELL), Math.floor((y + oy) / CELL))) return false;
+        return true;
+      };
+      let ang = NaN;
+      for (let k = 0; k < 48; k++) {
+        const t = a + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.13;
+        if (!g.pixels.raycast(c.x, c.y, Math.cos(t), Math.sin(t), 8.5, bot.pb) && roomy(c.x + Math.cos(t) * 7, c.y + Math.sin(t) * 7)) {
+          ang = t;
+          break;
+        }
+      }
+      if (Number.isNaN(ang)) {
+        log(md, { skipped: 'no free spot near the bot' });
+        continue;
+      }
+      place(c.x + Math.cos(ang) * 7, c.y + Math.sin(ang) * 7, ang + Math.PI);
+      while (performance.now() - t0 < 3000) {
+        maxSusp = Math.max(maxSusp, g.security.suspicion);
+        if (g.security.alert && tAlarm < 0) {
+          tAlarm = performance.now() - t0;
+          shot('spotted');
+        }
+        await sleep(16);
+      }
+      const sealed = (g.security as unknown as { sealed: Set<unknown> }).sealed.size;
+      log(md, { alert: g.security.alert, alarmMs: Math.round(tAlarm), maxSuspicion: +maxSusp.toFixed(2), sealedDoors: sealed, health: Math.round(g.ship.health), cause: g.ship.deathCause });
+    }
+    if (md === 'turret') {
+      const g = game();
+      const t = g.security.turrets[0];
+      if (!t) {
+        log('turret', { error: 'no turrets' });
+        continue;
+      }
+      // sit 8 m off the wall along the turret's normal, then trip the alarm
+      place(t.x + Math.cos(t.dir) * 8, t.y + Math.sin(t.dir) * 8, 0);
+      g.security.raiseAlarm({ x: g.ship.x, y: g.ship.y });
+      const h0 = g.ship.health;
+      const t0 = performance.now();
+      while (performance.now() - t0 < 3000 && g.ship.alive) {
+        place(t.x + Math.cos(t.dir) * 8, t.y + Math.sin(t.dir) * 8, 0);
+        await sleep(16);
+      }
+      shot('turret');
+      log('turret', { hpLost: Math.round(h0 - g.ship.health), cause: g.ship.deathCause, bullets: g.projectiles.count });
+    }
+    if (md === 'drones') {
+      const g = game();
+      const bay = g.security as unknown as { bays: { x: number; y: number; launched: number }[] };
+      const b = bay.bays[0];
+      if (!b) {
+        log('drones', { error: 'no bays' });
+        continue;
+      }
+      place(b.x + 6, b.y, Math.PI);
+      g.security.raiseAlarm({ x: g.ship.x, y: g.ship.y });
+      const h0 = g.ship.health;
+      await sleep(4000);
+      shot('drones');
+      const drones = g.security.robots.filter((r) => r.pb.tags.label === 'drone' && r.alive).length;
+      log('drones', { launched: b.launched, alive: drones, hpLost: Math.round(h0 - g.ship.health), cause: g.ship.deathCause });
     }
     if (md === 'brake') {
       const g = game();

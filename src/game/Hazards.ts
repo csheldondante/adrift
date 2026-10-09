@@ -130,7 +130,7 @@ export class Hazards {
     };
     for (const b of ctx.pixels.bodies) kick(b.body, b.body.mass() / 60);
     const k = kick(ctx.ship.body, 1.8);
-    if (k > 0) ctx.ship.damage(55 * k);
+    if (k > 0) ctx.ship.damage(55 * k, 'explosion');
 
     for (let i = 0; i < 70; i++) {
       const a = Math.random() * Math.PI * 2;

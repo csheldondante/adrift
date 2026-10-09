@@ -22,6 +22,7 @@ export class Hud {
   private readonly stats: HTMLDivElement;
   private readonly tools: HTMLDivElement;
   private readonly banner: HTMLDivElement;
+  private readonly alertEl: HTMLDivElement;
   private readonly help: HTMLDivElement;
   private readonly velArrow: HTMLDivElement;
   private readonly markers: { el: HTMLDivElement; label: string }[];
@@ -36,6 +37,7 @@ export class Hud {
     this.velArrow = el('div', 'hud-vel-arrow', vel);
     this.tools = el('div', 'hud-tools', this.root);
     this.banner = el('div', 'hud-banner', this.root);
+    this.alertEl = el('div', 'hud-alert', this.root);
     this.help = el(
       'div',
       'hud-help',
@@ -85,6 +87,18 @@ export class Hud {
     else if (!game.ship.alive) this.showBanner(game.ship.deathCause === 'crushed' ? 'CRUSHED' : 'SHIP DESTROYED', 'press R to restart', 'lose');
     else if (obj.state === 'lost') this.showBanner('CORE LOST', 'press R to restart', 'lose');
     else this.banner.style.display = 'none';
+
+    // security: alarm countdown, or a "watched" meter while a bot is getting suspicious
+    const sec = game.security;
+    if (sec.alert) {
+      this.alertEl.style.display = 'block';
+      this.alertEl.className = 'hud-alert alarm';
+      this.alertEl.textContent = `ALERT · ${Math.ceil(sec.alertTimer)}s`;
+    } else if (sec.suspicion > 0.02) {
+      this.alertEl.style.display = 'block';
+      this.alertEl.className = 'hud-alert watched';
+      this.alertEl.innerHTML = `WATCHED <i style="width:${Math.round(sec.suspicion * 100)}%"></i>`;
+    } else this.alertEl.style.display = 'none';
 
     const c = game.salvage.alive ? game.salvage.body.worldCom() : null;
     const z = obj.zone;

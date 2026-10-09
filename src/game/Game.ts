@@ -25,6 +25,8 @@ import { Hazards } from './Hazards';
 import type { LevelSpec } from './level/types';
 import { ExtractionObjective } from './Objective';
 import { Machinery } from './Machinery';
+import { Projectiles } from './Projectiles';
+import { Security } from './security/Security';
 import { Ship } from './Ship';
 import type { Controls, GameContext, Tool } from './types';
 
@@ -45,6 +47,8 @@ export class Game {
   readonly hazards = new Hazards();
   readonly objective: ExtractionObjective;
   readonly machinery: Machinery;
+  readonly projectiles: Projectiles;
+  readonly security: Security;
   readonly cutter: Cutter;
   readonly grapple: Grapple;
   readonly controls: Controls = { thrust: 0, turn: 0, reel: 0, aimX: 0, aimY: 0 };
@@ -110,6 +114,8 @@ export class Game {
       fx: this.fx,
     };
     this.hazards.bind(this.ctx);
+    this.projectiles = new Projectiles(this.ctx);
+    this.security = new Security(this.ctx, level.entities, level.doors, this.projectiles);
     this.cutter = new Cutter(this.ctx);
     this.grapple = new Grapple(this.ctx);
     this.slots = [this.cutter, this.grapple];
@@ -174,6 +180,8 @@ export class Game {
     this.ship.sync(this.time);
     for (const t of this.slots) t.frameUpdate(dt);
     this.machinery.frameUpdate();
+    this.security.frameUpdate();
+    this.projectiles.frameUpdate();
     this.engineFx();
     this.particles.update(dt, field, this.pixels.terrain.grid);
     this.objective.update(dt);
@@ -190,6 +198,8 @@ export class Game {
     this.hazards.update(dt);
     this.pixels.flush();
     this.machinery.fixedUpdate(dt);
+    this.security.fixedUpdate(dt);
+    this.projectiles.step(dt);
     this.applyFieldForces(dt);
     this.cullFarBodies();
     this.physics.step();
@@ -244,7 +254,7 @@ export class Game {
           continue;
         }
         if (cf.force > s.impactDamageThreshold) {
-          this.ship.damage((cf.force - s.impactDamageThreshold) * s.impactDamageScale);
+          this.ship.damage((cf.force - s.impactDamageThreshold) * s.impactDamageScale, 'impact');
           this.app.stage.shake(Math.min(0.4, cf.force / 400000));
         }
         continue;
@@ -272,7 +282,7 @@ export class Game {
     }
     if (this.ship.alive) {
       this.ctx.field.sample(this.ship.x, this.ship.y, sample);
-      if (sample.heat > 0.3) this.ship.damage(s.heatDamage * sample.heat * dt);
+      if (sample.heat > 0.3) this.ship.damage(s.heatDamage * sample.heat * dt, 'heat');
     }
     if (!this.ship.alive && !this.deathHandled) {
       this.deathHandled = true;
@@ -369,6 +379,7 @@ export class Game {
   dispose(): void {
     for (const t of this.slots) t.dispose();
     this.machinery.dispose();
+    this.security.dispose();
     this.objective.dispose();
     this.backWall?.dispose();
     this.pixels.dispose();
