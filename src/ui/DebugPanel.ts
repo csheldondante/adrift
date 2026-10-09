@@ -31,17 +31,22 @@ export function createDebugPanel(actions: DebugActions): GUI {
   g.add(tune.grapple, 'maxLength', 4, 60, 0.5);
   g.add(tune.grapple, 'reelSpeed', 0.5, 30, 0.5);
   g.add(tune.grapple, 'pivot', ['com', 'nose']).name('ship pivot (P)').listen();
-  g.add(tune.grapple, 'segmentLength', 0.2, 2, 0.05).name('segment length (next grapple)');
+  g.add(tune.grapple, 'segmentLength', 0.25, 3, 0.05).name('segment length (next grapple)');
   g.add(tune.grapple, 'segmentMass', 0.05, 10, 0.05).name('segment mass (next grapple)');
   g.add(tune.grapple, 'segmentDamping', 0, 8, 0.05).name('segment damping (next grapple)');
   g.add(tune.grapple, 'stiffness', 2000, 300000, 1000).name('stiffness EA (N)');
   g.add(tune.grapple, 'damping', 0, 3, 0.01).name('spring damping');
+  g.add(tune.grapple, 'internalDamping', 0, 60, 0.5).name('rope wobble damping');
+  g.add(tune.grapple, 'chordDamping', 0, 60, 0.5).name('taut straightening');
   g.add(tune.grapple, 'maxStretch', 0.01, 0.6, 0.01).name('max stretch (next grapple)');
-  g.add(tune.grapple, 'hookSpeed', 2, 60, 0.5);
+  g.add(tune.grapple, 'hookSpeed', 10, 200, 1);
   g.add(tune.grapple, 'hookMass', 0.5, 40, 0.5).name('head mass (kg)');
-  g.add(tune.grapple, 'hangTime', 0, 5, 0.1).name('miss hang time');
-  g.add(tune.grapple, 'retractSpeed', 1, 40, 0.5);
-  g.add(tune.grapple, 'tightenSpeed', 0.5, 40, 0.5).name('auto-tighten speed');
+  g.add(tune.grapple, 'recoil', 0, 1000, 10).name('recoil (N·s)');
+  g.add(tune.grapple, 'biteSlack', 1, 1.6, 0.01).name('slack at impact');
+  g.add(tune.grapple, 'retractSpeed', 5, 200, 1);
+  g.add(tune.grapple, 'tightenSpeed', 1, 80, 1).name('impact winch speed');
+  g.add(tune.grapple, 'autoTakeUp').name('auto take-up slack');
+  g.add(tune.grapple, 'takeUpSpeed', 0.5, 20, 0.5).name('take-up speed');
 
   const c = gui.addFolder('Cutter');
   c.add(tune.cutter, 'radius', 0.15, 2.5, 0.05);

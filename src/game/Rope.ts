@@ -1,11 +1,8 @@
-// Physical tether: a chain of light dynamic segments from a target end (the flying hook head,
-// or whatever it bit into) to an anchor on the ship. Segments collide with terrain and loose
-// bodies, so the rope drifts, loops, wraps around corners and sags.
-//
-// The rope can start from any layout (the grapple spawns it coiled at the nose). Because
-// links are max-distance joints between massive segments, tension propagates down the chain
-// one link at a time: when the head flies off, the loops nearest it straighten first and the
-// far coils follow later.
+// Physical tether: a chain of dynamic segments from a target end (whatever the harpoon stuck
+// into) to an anchor on the ship. Segments collide with terrain and loose bodies, so the rope
+// sags when slack and wraps around corners. It can start from any layout (the harpoon spawns
+// it along a slack bow). Links are max-distance joints between massive segments, so tension
+// propagates down the chain rather than instantly.
 //
 // Tension model ("a little spring"):
 //   - Rest length L. Every joint is a hard max-distance limit at L·(1+maxStretch), plus a
@@ -52,6 +49,12 @@ export class Rope {
   private readonly stretchMax: number;
   private readonly pts: P[] = [];
   length: number;
+  /**
+   * 1/s damping of segment motion toward the straight line between the ends. The owner
+   * enables it only when the rope should be a straight line (taut, nothing in the way);
+   * slack or wrapped rope keeps its natural sway.
+   */
+  chordDamping = 0;
   /** Current spring tension (N), for visuals/HUD. */
   tension = 0;
 
@@ -262,8 +265,53 @@ export class Rope {
   }
 
   /** Applies the stretch spring for one physics step. Call before the world steps. */
+  /**
+   * Internal damping: pulls each segment's velocity toward the average of its neighbors'.
+   * Kills transverse string vibration (the "noisy" wobble) without damping the rope's bulk
+   * motion, which plain linear damping would drag on.
+   */
+  private dampInternal(dt: number): void {
+    const k = Math.min(1, tune.grapple.internalDamping * dt);
+    if (k <= 0) return;
+    const vel = (b: Body, p: P) => b.velocityAtPoint(p);
+    const n = this.segs.length + 2;
+    const v: P[] = [];
+    v.push(vel(this.target.body, this.pts[0]));
+    for (const s of this.segs) v.push(s.linvel());
+    v.push(vel(this.ship.body, this.pts[n - 1]));
+    for (let i = 0; i < this.segs.length; i++) {
+      const a = v[i];
+      const c = v[i + 2];
+      const me = v[i + 1];
+      this.segs[i].setLinvel({ x: me.x + ((a.x + c.x) * 0.5 - me.x) * k, y: me.y + ((a.y + c.y) * 0.5 - me.y) * k }, true);
+    }
+    // taut: also pull motion toward the rigid line between the ends (kills the swinging bow)
+    const kc = Math.min(1, this.chordDamping * dt);
+    if (kc <= 0) return;
+    const va = v[0];
+    const vb = v[n - 1];
+    for (let i = 0; i < this.segs.length; i++) {
+      const t = (i + 1) / (n - 1);
+      const me = this.segs[i].linvel();
+      const rx = va.x + (vb.x - va.x) * t;
+      const ry = va.y + (vb.y - va.y) * t;
+      // only the component across the chord, so take-up along the rope isn't resisted
+      const ex = this.pts[n - 1].x - this.pts[0].x;
+      const ey = this.pts[n - 1].y - this.pts[0].y;
+      const el = Math.hypot(ex, ey) || 1;
+      const nx = -ey / el;
+      const ny = ex / el;
+      const across = ((me.x - rx) * nx + (me.y - ry) * ny) * kc;
+      // plus a position nudge back toward the chord, scaled the same way
+      const p = this.pts[i + 1];
+      const off = ((p.x - this.pts[0].x) * nx + (p.y - this.pts[0].y) * ny) * kc;
+      this.segs[i].setLinvel({ x: me.x - nx * (across + off / Math.max(dt, 1e-3) * 0.1), y: me.y - ny * (across + off / Math.max(dt, 1e-3) * 0.1) }, true);
+    }
+  }
+
   applyTension(dt = FIXED_DT): void {
     const stretch = this.extension(); // also refreshes this.pts
+    this.dampInternal(dt);
     const pts = this.pts;
     const n = this.segs.length + 2;
     if (stretch <= 0) {

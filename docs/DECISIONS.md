@@ -2,7 +2,25 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-09 — Grapple v4: harpoon (supersedes v3's coil)
+
+**User:** "I want the hook to feel like a harpoon shot out at high velocity to stick into the side of something. Don't let out a big coil (I was wrong, that looks bad), but when it thunks into something there is slack that quickly gets pulled taut by the winch. The rope is still too noisy; it should be almost a straight line when it is taut."
+
+- **Flight:** the head is a swept kinematic projectile at 70 m/s. Its path is a pixel raycast each step, and there is no physics body or rope in flight; a thin straight cord is drawn to the ship. Firing kicks the ship back 100 N·s. A miss at 26 m zips the head back.
+- **Thunk:** the anchor snaps to the nearest solid cell. The head's momentum (6 kg × closing speed) goes into a pixel body it hits. The physical rope spawns along a parabolic slack bow at 1.15 × the distance, with the bow side chosen at random.
+- **Winch:** reels at 12 m/s until the rope is straight and holds about 400 N of pretension. "Straight" is geometric whenever the line between the ends is clear, because a swinging slack bow spikes tension mid-swing and fooled a tension-only check (it stopped at 9% slack). When the rope is wrapped, sustained tension is the only signal.
+- **Take-up:** after the snap, the winch keeps taking up slack at 4 m/s, so the rope stays straight as the ship drifts toward the anchor. Without it, the snap pulse sent the ship drifting in and the rope bowed again. Holding E pays out, and take-up pauses for 0.4 s afterwards; it can be toggled with `autoTakeUp`.
+
+### Getting rid of the noise
+- **Fewer, heavier links:** 1 m and 1 kg each, instead of 0.5 m and 0.35 kg.
+- **Internal damping:** each segment's velocity is pulled toward its neighbors' average. This kills the high-frequency wobble without dragging on the rope's bulk motion.
+- **Chord damping:** while the rope is taut and nothing blocks the line between its ends, segment motion across the chord is damped and segments are nudged onto the line. This kills the slow swing of the whole bow, which neighbor averaging can't see. Wrapped or slack rope keeps its natural sway.
+- **Measured:** about 0.3 s after impact the physical rope settles to a 0.00 m deviation from straight. Before these changes the bow kept swinging 0.3–2.5 m.
+- **Rendering:** once snug, with a clear line of sight, the rope is drawn as an exact straight line. While snapping, slack or wrapped, it's drawn through Chaikin-smoothed segment positions, so the slack bow is visible at impact.
+
 ## 2026-10-09 — Grapple v3: coiled rope, drifting head, gentle snug; impacts; RCS brake
+
+**Superseded by v4 the same day**, after the user saw it ("the coil looks bad"). The impacts and RCS brake parts below still apply.
 
 ### What the user asked for
 - "Shoot out with slack cord visible that unfurls until it clamps… pull taut as soon as it makes contact… a little bit of spring."

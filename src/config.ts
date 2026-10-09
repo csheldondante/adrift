@@ -32,22 +32,27 @@ export const tune = {
     heatDamage: 25, // hp/s at heat 1
   },
   grapple: {
-    maxLength: 22, // m of rope on the spool
+    maxLength: 26, // m harpoon range / rope on the spool
     minLength: 1.5,
-    reelSpeed: 5, // m/s (Q/E)
-    segmentLength: 0.5, // m per physical rope segment
-    segmentMass: 0.35, // kg per segment (whole cord ≈ 15 kg) — light vs the head so it unfurls
-    segmentDamping: 1.5, // linear damping on segments: slack rope drifts and settles, no jitter
+    reelSpeed: 7, // m/s (Q/E)
+    segmentLength: 1.0, // m per physical rope segment (fewer, longer links = straighter taut rope)
+    segmentMass: 1.0, // kg per segment
+    segmentDamping: 0.6, // linear damping on segments: slack settles without jitter
+    internalDamping: 12, // 1/s: segment velocity pulled toward neighbors' average (kills string wobble)
+    chordDamping: 10, // 1/s: when taut with a clear line, segments are pulled onto the straight line
     /** Where the rope attaches to the ship: center of mass (no torque) or nose (tension steers the ship). */
     pivot: 'com' as 'com' | 'nose',
-    hookSpeed: 16, // m/s launch speed of the head (plus ship velocity); slows as it drags rope out
-    hookMass: 6, // kg; heavier head = carries the coil further
-    tightenSpeed: 6, // m/s gentle auto-winch after the hook bites, until the rope is taut
-    snugTension: 1500, // N sustained tension at which the auto-winch considers the rope snug
-    retractSpeed: 10, // m/s reel-in after a miss
-    hangTime: 0.8, // s a missed hook hangs at full extension before reeling home
+    hookSpeed: 70, // m/s harpoon muzzle speed (plus ship velocity)
+    hookMass: 6, // kg; its momentum is delivered to whatever it thunks into
+    recoil: 100, // N·s kick on the ship when firing
+    biteSlack: 1.15, // rope length at impact = distance × this (visible slack bow)
+    tightenSpeed: 12, // m/s winch that snaps the slack taut after impact
+    retractSpeed: 60, // m/s head returning after a miss
+    snugTension: 400, // N sustained pretension at which the fast winch hands over to take-up
+    autoTakeUp: true, // keep reeling in slack while attached (rope stays straight); E pays out
+    takeUpSpeed: 4, // m/s take-up winch
     stiffness: 40000, // N per unit strain (EA): 3000 N tow ≈ 7.5% stretch
-    damping: 0.9, // fraction of critical damping on the stretch spring (high = no bounce-chatter)
+    damping: 0.9, // fraction of critical damping on the stretch spring
     maxStretch: 0.15, // hard limit beyond the spring
   },
   cutter: {

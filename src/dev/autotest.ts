@@ -142,40 +142,48 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         input.simulateDown('Mouse2');
         setTimeout(() => input.simulateUp('Mouse2'), 20);
       };
-      // 1) miss into open space: watch the coil unfurl (head distance over time)
-      place(m(150), m(380), Math.PI);
-      await sleep(100);
-      const s0 = { x: g.ship.x, y: g.ship.y };
-      fireAt(m(20), m(380));
-      const dists: number[] = [];
-      for (let i = 0; i < 12; i++) {
-        await sleep(150);
-        if (i === 1) shot('unfurl-0.3s');
-        if (i === 4) shot('unfurl-0.75s');
-        if (i === 8) shot('unfurl-1.35s');
-        const h = g.grapple.headPosition;
-        dists.push(h ? +Math.hypot(h.x - s0.x, h.y - s0.y).toFixed(1) : -1);
-      }
-      const v = g.ship.body.linvel();
-      log('hook unfurl', { headDistEvery150ms: dists.join(' '), state: g.grapple.state, shipSpeed: +Math.hypot(v.x, v.y).toFixed(2) });
-      await sleep(5000);
-      log('hook miss', { stateAfter: g.grapple.state });
-      // 2) bite the prow from ~11 m and snug up
-      g.grapple.detach();
+      // 1) harpoon the prow from ~11 m: flight, thunk with slack, winch snaps taut
       place(m(150), m(380), 0);
       await sleep(100);
       const t0 = performance.now();
       fireAt(m(260), m(380));
-      let tBite = -1;
-      while (performance.now() - t0 < 5000) {
-        if (tBite < 0 && g.grapple.attached) tBite = performance.now() - t0;
-        if (tBite >= 0 && g.grapple.snug) break;
-        await sleep(10);
+      let tThunk = -1;
+      let slackAtThunk = 0;
+      while (performance.now() - t0 < 4000) {
+        if (tThunk < 0 && g.grapple.attached) {
+          tThunk = performance.now() - t0;
+          slackAtThunk = 1 - g.grapple.endRatio;
+          shot('harpoon-thunk');
+          setTimeout(() => shot('harpoon-snap'), 90);
+        }
+        if (tThunk >= 0 && g.grapple.snug) break;
+        await sleep(5);
       }
-      const tTaut = performance.now() - t0;
-      shot('hook-taut');
-      const v2 = g.ship.body.linvel();
-      log('hook bite', { biteMs: Math.round(tBite), snugMs: Math.round(tTaut), endRatio: +g.grapple.endRatio.toFixed(2), len: +g.grapple.length.toFixed(2), shipSpeed: +Math.hypot(v2.x, v2.y).toFixed(2), health: Math.round(g.ship.health) });
+      const tSnug = performance.now() - t0;
+      for (let i = 0; i < 16 && new URLSearchParams(location.search).has('trace'); i++) {
+        log('tr', Math.round(performance.now() - t0), +g.grapple.length.toFixed(2), +g.grapple.endRatio.toFixed(3), +g.grapple.tautness.toFixed(3), Math.round(g.grapple.tension), +g.grapple.maxDeviation.toFixed(2), g.grapple.snug);
+        await sleep(80);
+      }
+      await sleep(300);
+      shot('harpoon-taut');
+      const v = g.ship.body.linvel();
+      log('harpoon', {
+        thunkMs: Math.round(tThunk),
+        slackAtThunk: +slackAtThunk.toFixed(2),
+        snugMs: Math.round(tSnug),
+        endRatio: +g.grapple.endRatio.toFixed(3),
+        maxDeviationM: +g.grapple.maxDeviation.toFixed(3),
+        shipSpeed: +Math.hypot(v.x, v.y).toFixed(2),
+      });
+      // 2) miss into open space: head flies to range, zips back
+      g.grapple.detach();
+      place(m(150), m(380), Math.PI);
+      await sleep(100);
+      fireAt(m(20), m(380));
+      await sleep(150);
+      shot('harpoon-flying');
+      await sleep(1200);
+      log('harpoon miss', { stateAfter: g.grapple.state });
     }
     if (md === 'brake') {
       const g = game();
@@ -250,7 +258,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       // put the ship inside the hold (as if a way in was cut), next to the core
       place(c.x - 5.25, c.y + 6, Math.PI / 2); // open hold space up-left of the core, clear of the pillar
       await sleep(200);
-      aim(c.x, c.y);
+      aim(c.x - 2, c.y); // near side of the core; the line to its center clips the cradle plate
       input.simulateDown('Mouse2');
       await sleep(50);
       input.simulateUp('Mouse2');
