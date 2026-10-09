@@ -18,6 +18,8 @@ export abstract class PixelObject implements PhysOwner {
   readonly mesh: THREE.Mesh;
   private readonly pixels: Uint32Array;
   private textureDirty = false;
+  /** Cells with visual heat, cooled and repainted each frame. */
+  private readonly hot = new Set<number>();
 
   // cached transform, refreshed by syncTransform()
   px = 0;
@@ -43,6 +45,49 @@ export abstract class PixelObject implements PhysOwner {
     this.mesh.renderOrder = renderOrder;
     this.mesh.frustumCulled = false;
     this.paint({ x0: 0, y0: 0, x1: grid.w, y1: grid.h });
+    // pieces split off hot material keep glowing
+    for (let i = 0; i < grid.heat.length; i++) if (grid.heat[i] > 0) this.hot.add(i);
+  }
+
+  /** Adds visual heat in a circle (local cell units). Works on any solid material. */
+  heatCircle(cx: number, cy: number, r: number, amount: number): void {
+    const g = this.grid;
+    const x0 = Math.max(0, Math.floor(cx - r));
+    const y0 = Math.max(0, Math.floor(cy - r));
+    const x1 = Math.min(g.w, Math.ceil(cx + r));
+    const y1 = Math.min(g.h, Math.ceil(cy + r));
+    for (let y = y0; y < y1; y++)
+      for (let x = x0; x < x1; x++) {
+        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+        if (d > r || !g.solid(x, y)) continue;
+        const i = y * g.w + x;
+        g.heat[i] = Math.min(1.2, g.heat[i] + amount * (1 - d / r));
+        this.hot.add(i);
+        this.paintCell(i);
+      }
+  }
+
+  /** Cools hot cells and repaints them. Call once per frame. */
+  cool(dt: number): void {
+    if (this.hot.size === 0) return;
+    const g = this.grid;
+    const k = Math.exp(-dt * 1.1);
+    for (const i of this.hot) {
+      const h = g.heat[i] * k - dt * 0.02;
+      if (h <= 0.01 || g.mat[i] === 0) {
+        g.heat[i] = 0;
+        this.hot.delete(i);
+      } else g.heat[i] = h;
+      this.paintCell(i);
+    }
+  }
+
+  private paintCell(i: number): void {
+    const g = this.grid;
+    const m = g.mat[i];
+    const max = MAT_HP[m];
+    this.pixels[i] = cellColor(m, g.shade[i], max > 0 ? g.hp[i] / max : 1, g.heat[i]);
+    this.textureDirty = true;
   }
 
   /** Recomputes display colors for a cell region. */
@@ -57,7 +102,7 @@ export abstract class PixelObject implements PhysOwner {
         const i = y * grid.w + x;
         const m = grid.mat[i];
         const max = MAT_HP[m];
-        pixels[i] = cellColor(m, grid.shade[i], max > 0 ? grid.hp[i] / max : 1);
+        pixels[i] = cellColor(m, grid.shade[i], max > 0 ? grid.hp[i] / max : 1, grid.heat[i]);
       }
     }
     this.textureDirty = true;

@@ -101,6 +101,26 @@ export class PixelWorld {
     return destroyed;
   }
 
+  /** Adds visual heat (glow) to all pixel matter in a world-space circle. */
+  heatCircle(wx: number, wy: number, radius: number, amount: number): void {
+    const heat = (o: PixelObject) => {
+      o.worldToLocal(wx, wy, tmp);
+      o.heatCircle(tmp.x, tmp.y, radius / CELL, amount);
+    };
+    heat(this.terrain);
+    for (const b of this.bodies) {
+      b.boundingCircle(circ);
+      const reach = circ.r + radius;
+      if ((circ.x - wx) ** 2 + (circ.y - wy) ** 2 <= reach * reach) heat(b);
+    }
+  }
+
+  /** Cools glowing cells everywhere; call once per frame. */
+  cool(dt: number): void {
+    this.terrain.cool(dt);
+    for (const b of this.bodies) b.cool(dt);
+  }
+
   private damageObject(o: PixelObject, wx: number, wy: number, radius: number, dmg: number): number {
     o.worldToLocal(wx, wy, tmp);
     const res = o.grid.damageCircle(tmp.x, tmp.y, radius / CELL, dmg);
@@ -268,6 +288,7 @@ export class PixelWorld {
         g.mat[j] = sg.mat[i];
         g.hp[j] = sg.hp[i];
         g.shade[j] = sg.shade[i];
+        g.heat[j] = sg.heat[i];
       }
       src.localToWorld(minX, minY, tmp);
       const init: BodyInit = { x: tmp.x, y: tmp.y, angle: src.angle };

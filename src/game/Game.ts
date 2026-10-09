@@ -145,6 +145,8 @@ export class Game {
     c.aimY = v2.y;
     if (input.hit('Mouse0')) this.slots[0].press();
     if (input.hit('Mouse2')) this.slots[1].press();
+    if (input.released('Mouse0')) this.slots[0].release();
+    if (input.released('Mouse2')) this.slots[1].release();
     if (input.hit('KeyP')) tune.grapple.pivot = tune.grapple.pivot === 'com' ? 'nose' : 'com';
     const wheel = input.takeWheel();
     if (wheel) this.zoom = Math.max(16, Math.min(90, this.zoom * Math.pow(1.12, wheel)));
@@ -162,6 +164,7 @@ export class Game {
     field.step(FIXED_DT);
 
     // visuals
+    this.pixels.cool(dt);
     this.pixels.syncVisuals();
     this.ship.sync(this.time);
     for (const t of this.slots) t.frameUpdate(dt);
@@ -224,6 +227,9 @@ export class Game {
     const imp = tune.impact;
     for (const cf of this.physics.contactForces) {
       if (cf.a === this.ship || cf.b === this.ship) {
+        // deliberately pulling into / clamped onto the tethered object isn't a crash
+        const other = cf.a === this.ship ? cf.b : cf.a;
+        if (other && other === this.grapple.targetObject) continue;
         if (cf.force > s.impactDamageThreshold) {
           this.ship.damage((cf.force - s.impactDamageThreshold) * s.impactDamageScale);
           this.app.stage.shake(Math.min(0.4, cf.force / 400000));

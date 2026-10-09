@@ -2,6 +2,21 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-09 — One-button harpoon (click / hold), clamping, heat glow, uncapped cutter
+
+The user's direction: the grapple is the first thing to make fun. It should support skilled slingshotting, grabbing explosives and swinging them at enemies, and winching objects close, clamping them on, then using them as a barrier or a ram. You should also be able to hitch a ride on large moving things: attach, winch up, clamp on contact.
+
+- **RMB does everything.** Press when idle to fire. When attached, a click under 0.18 s lets go, and a hold winches in at 9 m/s. The hold counts from the press, so fire-and-hold winches as soon as the harpoon sticks. Click while clamped to unclamp. Q/E still reel in and out.
+- **Clamping:** while winching (or fully reeled in), touching the tethered object locks the ship to it with a Rapier fixed joint at the current relative pose. Ship thrust and turning then move the combined body, so it serves as a shield or ram. Clamped to terrain you're perched; clamped to a mover you ride it.
+- **Docking isn't a crash:** contact with the tethered object never damages the ship, and the winch eases off over the last few meters. Without this, winching into a crate at speed killed the ship.
+- **Rapier gotcha:**
+  - Calling a world query (`contactPair`) inside another query's callback (`contactPairsWith`) panics with "recursive use of an object".
+  - Reading a removed body (`worldCom` on a destroyed PixelBody) panics with "unreachable".
+  - Either panic leaves the wasm module poisoned: every later call fails.
+  - So collect first, query after, and check `PixelBody.alive` before touching `.body`.
+- **Heat glow:** each pixel grid has a cosmetic `heat` array. The cutter heats the struck surface at 3/s for any material, so indestructible girders and the core glow from dull red through orange to yellow and never lose a pixel. Heat cools exponentially and is repainted only for hot cells. Split-off pieces keep their glow.
+- **Cutter range:** raised from 16 m to 200 m, effectively unlimited, at the user's request. The beam still stops at the first solid pixel.
+
 ## 2026-10-09 — Grapple v4: harpoon (supersedes v3's coil)
 
 **User:** "I want the hook to feel like a harpoon shot out at high velocity to stick into the side of something. Don't let out a big coil (I was wrong, that looks bad), but when it thunks into something there is slack that quickly gets pulled taut by the winch. The rope is still too noisy; it should be almost a straight line when it is taut."

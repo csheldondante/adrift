@@ -45,6 +45,7 @@ export function createDebugPanel(actions: DebugActions): GUI {
   g.add(tune.grapple, 'biteSlack', 1, 1.6, 0.01).name('slack at impact');
   g.add(tune.grapple, 'retractSpeed', 5, 200, 1);
   g.add(tune.grapple, 'tightenSpeed', 1, 80, 1).name('impact winch speed');
+  g.add(tune.grapple, 'winchSpeed', 1, 40, 0.5).name('hold-RMB winch speed');
   g.add(tune.grapple, 'autoTakeUp').name('auto take-up slack');
   g.add(tune.grapple, 'takeUpSpeed', 0.5, 20, 0.5).name('take-up speed');
 

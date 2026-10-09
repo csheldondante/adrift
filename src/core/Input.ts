@@ -4,6 +4,7 @@
 export class Input {
   private readonly held = new Set<string>();
   private readonly hits = new Set<string>();
+  private readonly ups = new Set<string>();
   mouseX = window.innerWidth / 2;
   mouseY = window.innerHeight / 2;
   wheel = 0;
@@ -15,7 +16,10 @@ export class Input {
       this.held.add(e.code);
       this.hits.add(e.code);
     });
-    window.addEventListener('keyup', (e) => this.held.delete(e.code));
+    window.addEventListener('keyup', (e) => {
+      this.held.delete(e.code);
+      this.ups.add(e.code);
+    });
     window.addEventListener('blur', () => this.held.clear());
     target.addEventListener('mousemove', (e) => {
       this.mouseX = e.clientX;
@@ -26,7 +30,10 @@ export class Input {
       this.held.add(code);
       this.hits.add(code);
     });
-    window.addEventListener('mouseup', (e) => this.held.delete(`Mouse${e.button}`));
+    window.addEventListener('mouseup', (e) => {
+      this.held.delete(`Mouse${e.button}`);
+      this.ups.add(`Mouse${e.button}`);
+    });
     target.addEventListener('contextmenu', (e) => e.preventDefault());
     target.addEventListener('wheel', (e) => {
       this.wheel += Math.sign(e.deltaY);
@@ -43,6 +50,11 @@ export class Input {
     return this.hits.delete(code);
   }
 
+  /** True once per physical release (consumes the release). */
+  released(code: string): boolean {
+    return this.ups.delete(code);
+  }
+
   takeWheel(): number {
     const w = this.wheel;
     this.wheel = 0;
@@ -56,5 +68,6 @@ export class Input {
   }
   simulateUp(code: string): void {
     this.held.delete(code);
+    this.ups.add(code);
   }
 }

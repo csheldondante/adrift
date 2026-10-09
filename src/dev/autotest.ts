@@ -46,7 +46,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
   };
 
   await sleep(800);
-  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'hook', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope'] : [mode];
+  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope'] : [mode];
   for (const md of modes) {
     restart();
     await sleep(300);
@@ -184,6 +184,73 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       shot('harpoon-flying');
       await sleep(1200);
       log('harpoon miss', { stateAfter: g.grapple.state });
+    }
+    if (md === 'clamp') {
+      // harpoon a crate in open space, hold RMB to winch it in and clamp, carry it, click to let go
+      const g = game();
+      const crate = g.pixels.bodies.find((b) => !b.explosiveCells && !b.tags.salvage && b.body.mass() > 100)!;
+      crate.body.setTranslation({ x: 20, y: 80 }, true);
+      crate.body.setLinvel({ x: 0, y: 0 }, true);
+      crate.body.setAngvel(0, true);
+      place(32, 81, Math.PI);
+      await sleep(150);
+      const cc = crate.body.worldCom();
+      aim(cc.x, cc.y);
+      input.simulateDown('Mouse2');
+      const t0 = performance.now();
+      while (performance.now() - t0 < 4000 && g.grapple.state !== 'clamped') await sleep(16);
+      const tClamp = performance.now() - t0;
+      input.simulateUp('Mouse2');
+      shot('clamped');
+      const gap0 = Math.hypot(crate.body.worldCom().x - g.ship.x, crate.body.worldCom().y - g.ship.y);
+      await hold('KeyW', 1000);
+      if (!crate.alive) { log('clamp', { error: 'crate destroyed', health: Math.round(g.ship.health) }); continue; }
+      const gap1 = Math.hypot(crate.body.worldCom().x - g.ship.x, crate.body.worldCom().y - g.ship.y);
+      const v = g.ship.body.linvel();
+      log('clamp', { state: g.grapple.state, clampMs: Math.round(tClamp), gapBefore: +gap0.toFixed(2), gapAfterThrust: +gap1.toFixed(2), speed: +Math.hypot(v.x, v.y).toFixed(2) });
+      input.simulateDown('Mouse2');
+      await sleep(40);
+      input.simulateUp('Mouse2');
+      await sleep(100);
+      log('clamp release', { state: g.grapple.state });
+      // short click on an attached line releases it
+      place(32, 81, Math.PI);
+      await sleep(100);
+      aim(crate.body.worldCom().x, crate.body.worldCom().y);
+      input.simulateDown('Mouse2');
+      await sleep(40);
+      input.simulateUp('Mouse2');
+      await sleep(600);
+      const st = g.grapple.state;
+      input.simulateDown('Mouse2');
+      await sleep(40);
+      input.simulateUp('Mouse2');
+      await sleep(100);
+      log('click release', { attachedBefore: st, after: g.grapple.state });
+    }
+    if (md === 'glow') {
+      // cutter on an uncuttable girder (antenna mast): it should glow but not lose pixels
+      const g = game();
+      const grid = g.pixels.terrain.grid;
+      const frameCells = () => {
+        let n = 0;
+        for (let y = 540; y < 610; y++) for (let x = 500; x < 503; x++) if (grid.mat[y * grid.w + x] === 3) n++;
+        return n;
+      };
+      const before = frameCells();
+      place(m(470), m(580), 0);
+      await sleep(100);
+      await hold('Mouse0', 1500, () => {
+        place(m(470), m(580), 0);
+        aim(m(501.5), m(580));
+      });
+      let maxHeat = 0;
+      for (let y = 570; y < 590; y++) for (let x = 498; x < 506; x++) maxHeat = Math.max(maxHeat, grid.heat[y * grid.w + x]);
+      shot('glow');
+      await sleep(2500);
+      let after = 0;
+      for (let y = 570; y < 590; y++) for (let x = 498; x < 506; x++) after = Math.max(after, grid.heat[y * grid.w + x]);
+      log('glow', { frameCellsBefore: before, frameCellsAfter: frameCells(), maxHeat: +maxHeat.toFixed(2), heatAfter2_5s: +after.toFixed(2) });
     }
     if (md === 'brake') {
       const g = game();

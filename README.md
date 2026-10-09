@@ -21,8 +21,8 @@ npm run smoke -- <outDir> "autotest=all"   # headless Chrome run with scripted s
 | A / D | Rotate |
 | Mouse | Aim tools |
 | Left mouse (hold) | Cutter |
-| Right mouse | Fire grapple / release |
-| Q / E | Reel in / out |
+| Right mouse | Fire harpoon; click again to let go; hold to winch in (clamps on contact) |
+| Q / E | Reel in / out (E pays out slack) |
 | Wheel | Zoom |
 | R | Restart |
 | H | Hide help |

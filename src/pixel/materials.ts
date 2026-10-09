@@ -66,7 +66,7 @@ for (const d of DEFS) {
 export const isSolidMat = (m: number) => (MAT_FLAGS[m] & F.SOLID) !== 0;
 
 /** Packs a cell's display color (RGBA, little-endian ABGR uint32) from material, shade noise, and damage. */
-export function cellColor(mat: number, shade: number, hpFrac: number): number {
+export function cellColor(mat: number, shade: number, hpFrac: number, heat = 0): number {
   if (mat === M.EMPTY) return 0;
   const v = MAT_VAR[mat];
   let k = 1 + (shade / 255 - 0.5) * 2 * v;
@@ -79,6 +79,13 @@ export function cellColor(mat: number, shade: number, hpFrac: number): number {
   if (dmg > 0) {
     r += dmg * 70;
     g += dmg * 18;
+  }
+  if (heat > 0.01) {
+    // incandescence: dull red, then orange, then yellow-white
+    const h = Math.min(1.2, heat);
+    r += 255 * Math.min(1, h * 1.4);
+    g += 190 * h * h;
+    b += 90 * h * h * h;
   }
   r = r < 0 ? 0 : r > 255 ? 255 : r;
   g = g < 0 ? 0 : g > 255 ? 255 : g;

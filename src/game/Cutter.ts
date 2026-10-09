@@ -57,6 +57,8 @@ export class Cutter implements Tool {
     const cy = hit.y + dy * c.radius * 0.5;
     ctx.pixels.damageCircle(cx, cy, c.radius, c.damagePerSecond * dt);
     ctx.field.inject(cx, cy, c.radius, 0, c.heat * dt);
+    // the struck surface glows (uncuttable material too: it heats but never gives)
+    ctx.pixels.heatCircle(cx, cy, c.radius * 1.5, c.glowRate * dt);
     for (let k = 0; k < 2; k++) {
       const sp = 3 + Math.random() * 7;
       const side = (Math.random() - 0.5) * 9;

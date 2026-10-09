@@ -47,6 +47,8 @@ export const tune = {
     recoil: 100, // N·s kick on the ship when firing
     biteSlack: 1.15, // rope length at impact = distance × this (visible slack bow)
     tightenSpeed: 12, // m/s winch that snaps the slack taut after impact
+    winchSpeed: 9, // m/s winch while RMB is held
+    holdToWinch: 0.18, // s: RMB held longer than this winches; a shorter click releases
     retractSpeed: 60, // m/s head returning after a miss
     snugTension: 400, // N sustained pretension at which the fast winch hands over to take-up
     autoTakeUp: true, // keep reeling in slack while attached (rope stays straight); E pays out
@@ -58,8 +60,9 @@ export const tune = {
   cutter: {
     radius: 0.55, // m
     damagePerSecond: 420, // hp/s at beam center
-    range: 16, // m
-    heat: 0.9, // heat injected per second
+    range: 200, // m (effectively unlimited; the raycast stops at the first solid pixel)
+    heat: 0.9, // gas-field heat injected per second
+    glowRate: 3, // visual surface heat per second at the beam center (1 ≈ bright orange)
   },
   gas: {
     stiffness: 900, // pressure -> flow acceleration (field units)

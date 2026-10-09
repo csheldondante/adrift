@@ -4,8 +4,8 @@
 // bow between ship and head, and a fast winch snaps the slack taut. From then on the rope is
 // real physics (wraps corners, stretches a little, tows, whips things around).
 //
-// States: idle → flying → (thunk) → attached [tightening → snug] → idle
-//                       ↘ (out of range) → retracting → idle
+// States: idle â flying â (thunk) â attached [tightening â snug] â idle
+//                       â (out of range) â retracting â idle
 // Right mouse: fire (idle) / release (attached). Q/E reel in/out.
 //
 // Rendering: a taut rope with a clear line of sight between its ends is drawn as a straight
@@ -26,21 +26,21 @@ import { Rope } from './Rope';
 import { Ship } from './Ship';
 import type { GameContext, Tool } from './types';
 
-type State = 'idle' | 'flying' | 'attached' | 'retracting';
+type State = 'idle' | 'flying' | 'attached' | 'clamped' | 'retracting';
 type P = { x: number; y: number };
 
 const nose = { x: 0, y: 0 };
 const tmp = { x: 0, y: 0 };
 
 /**
- * Points along a slack bow (parabola) from a to b whose arc length ≈ `len`, spaced evenly,
- * excluding the endpoints. `side` (±1) picks which way it bows.
+ * Points along a slack bow (parabola) from a to b whose arc length â `len`, spaced evenly,
+ * excluding the endpoints. `side` (Â±1) picks which way it bows.
  */
 function bowLayout(a: P, b: P, len: number, n: number, side: number): P[] {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const d = Math.max(1e-3, Math.hypot(dx, dy));
-  // parabola arc length ≈ d + 8h²/(3d)  →  h for the requested slack
+  // parabola arc length â d + 8hÂ²/(3d)  â  h for the requested slack
   const h = side * Math.sqrt(Math.max(0, (3 * d * (len - d)) / 8));
   const nx = -dy / d;
   const ny = dx / d;
@@ -89,6 +89,11 @@ export class Grapple implements Tool {
   private tightening = false;
   private tensionAvg = 0;
   private reelHold = 0;
+  // RMB: click = fire / release, hold = winch in
+  private pressedWhileAttached = false;
+  private holdTime = 0;
+  private winching = false;
+  private clampJoint: import('@dimforge/rapier2d-compat').ImpulseJoint | null = null;
   private pivotMode = tune.grapple.pivot;
   private readonly ribbons: Ribbon[] = [];
   private readonly claw = [new Ribbon(0xe8f4ff, ORDER.fx + 1), new Ribbon(0xe8f4ff, ORDER.fx + 1)];
@@ -134,12 +139,20 @@ export class Grapple implements Tool {
     return m;
   }
 
+  /** RMB down: fire when idle; when attached, a short click releases and a hold winches in. */
   press(): void {
     if (this.state === 'idle') this.fire();
-    else if (this.state === 'attached') this.detach();
+    else if (this.state === 'flying') this.state = 'retracting';
+    else if (this.state === 'attached') this.pressedWhileAttached = true;
+    else if (this.state === 'clamped') this.detach();
   }
 
-  release(): void {}
+  /** RMB up: a short click on an attached line lets go; ending a hold just stops winching. */
+  release(): void {
+    if (this.state === 'attached' && this.pressedWhileAttached && !this.winching) this.detach();
+    this.pressedWhileAttached = false;
+    this.winching = false;
+  }
 
   private shipAnchor(): P {
     if (tune.grapple.pivot === 'nose') return { ...Ship.NOSE };
@@ -247,6 +260,10 @@ export class Grapple implements Tool {
   }
 
   detach(): void {
+    if (this.clampJoint) this.ctx.physics.world.removeImpulseJoint(this.clampJoint, true);
+    this.clampJoint = null;
+    this.winching = false;
+    this.pressedWhileAttached = false;
     this.rope?.destroy();
     this.rope = null;
     this.target = null;
@@ -261,7 +278,14 @@ export class Grapple implements Tool {
     if (this.target === b) this.detach();
   }
 
-  fixedUpdate(dt: number): void {
+  fixedUpdate(dt: number, held = false): void {
+    // a hold counts from the press, so fire-and-hold winches as soon as the harpoon sticks
+    this.holdTime = held ? this.holdTime + dt : 0;
+    this.winching = this.state === 'attached' && held && this.holdTime > tune.grapple.holdToWinch;
+    if (this.state === 'clamped') {
+      this.updateClamped();
+      return;
+    }
     if (!this.ctx.ship.alive) {
       if (this.state !== 'idle') this.detach();
       return;
@@ -313,6 +337,20 @@ export class Grapple implements Tool {
       const body = t.kind === 'terrain' ? this.ctx.pixels.terrain.body : (t as PixelBody).body;
       rope.setTarget({ body, local: { x: cell.x * CELL, y: cell.y * CELL } });
     }
+    if (this.winching) {
+      // RMB held: winch in hard — pull yourself to the anchor, or the object to you
+      rope.chordDamping = 0;
+      this.tightening = false;
+      // ease off over the last few meters so docking onto the target is a bump, not a crash
+      const speed = Math.min(g.winchSpeed, Math.max(1.5, (rope.length - g.minLength) * 2.5));
+      rope.setLength(Math.max(g.minLength, rope.length - speed * dt));
+    }
+    // touching what we're tethered to while winching (or fully reeled in): clamp on
+    if ((this.winching || rope.length <= g.minLength + 0.5) && this.touching(t)) {
+      this.clamp();
+      return false;
+    }
+    if (this.winching) return true;
     const reel = this.ctx.controls.reel;
     if (reel !== 0) {
       // manual reel overrides the winch (E pays out slack on purpose)
@@ -326,7 +364,7 @@ export class Grapple implements Tool {
     if (!this.tightening && (!g.autoTakeUp || this.reelHold > 0)) return true;
     // Winch: fast right after impact (tightening), then a gentle take-up that keeps the rope
     // straight as the ship drifts toward the anchor. With a clear line between the ends,
-    // "straight" is geometric (end distance ≈ length); a swinging slack bow spikes tension
+    // "straight" is geometric (end distance â length); a swinging slack bow spikes tension
     // mid-swing, so tension alone isn't trusted. When wrapped round a corner, sustained
     // tension is the only signal. Never reel past the target in one step (no jerks).
     const n = rope.points(this.pts);
@@ -343,6 +381,60 @@ export class Grapple implements Tool {
       if (step > 0) rope.setLength(Math.max(g.minLength, rope.length - step));
     }
     return true;
+  }
+
+  /** True if the ship is in contact with any collider of `t` this step. */
+  private touching(t: PixelObject): boolean {
+    const { world } = this.ctx.physics;
+    const sc = this.ctx.ship.collider;
+    // collect first: Rapier panics ("recursive use of an object") if a world query runs
+    // inside another query's callback
+    const candidates: import('@dimforge/rapier2d-compat').Collider[] = [];
+    world.contactPairsWith(sc, (c2) => {
+      if (this.ctx.physics.ownerOf(c2) === t) candidates.push(c2);
+    });
+    let hit = false;
+    for (const c2 of candidates) {
+      world.contactPair(sc, c2, (m) => {
+        if (m.numSolverContacts() > 0) hit = true;
+      });
+      if (hit) break;
+    }
+    return hit;
+  }
+
+  /**
+   * Locks the ship to what it's tethered to, at the current relative pose. Clamped to a loose
+   * body you carry it (shield, battering ram); clamped to something moving you ride it.
+   */
+  private clamp(): void {
+    const { ctx } = this;
+    const t = this.target!;
+    const body = t.kind === 'terrain' ? ctx.pixels.terrain.body : (t as PixelBody).body;
+    const sb = ctx.ship.body;
+    // ship origin expressed in the target's frame, and the relative rotation
+    const st = sb.translation();
+    const bt = body.translation();
+    const ba = body.rotation();
+    const dx = st.x - bt.x;
+    const dy = st.y - bt.y;
+    const local = { x: Math.cos(ba) * dx + Math.sin(ba) * dy, y: -Math.sin(ba) * dx + Math.cos(ba) * dy };
+    const params = ctx.physics.R.JointData.fixed({ x: 0, y: 0 }, 0, local, sb.rotation() - ba);
+    this.clampJoint = ctx.physics.world.createImpulseJoint(params, sb, body, true);
+    this.rope?.destroy();
+    this.rope = null;
+    this.state = 'clamped';
+    this.winching = false;
+    for (const r of this.ribbons) r.hide();
+    for (const c of this.claw) c.hide();
+    ctx.ship.nose(nose);
+    for (let k = 0; k < 10; k++) ctx.particles.spark(nose.x, nose.y, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 5, 0.2, 0.07, 0.3);
+    ctx.stage.shake(0.15);
+  }
+
+  private updateClamped(): void {
+    const t = this.target;
+    if (!this.ctx.ship.alive || !t || (t.kind === 'pixelBody' && !(t as PixelBody).alive)) this.detach();
   }
 
   /** True if nothing solid blocks the straight line between the rope's ends. */
@@ -418,13 +510,15 @@ export class Grapple implements Tool {
     const pivot = `pivot ${tune.grapple.pivot}`;
     switch (this.state) {
       case 'idle':
-        return `ready · ${pivot}`;
+        return `ready Â· ${pivot}`;
       case 'flying':
-        return `firing · ${pivot}`;
+        return `firing Â· ${pivot}`;
+      case 'clamped':
+        return `clamped · click RMB to let go`;
       case 'retracting':
-        return `missed · ${pivot}`;
+        return `missed Â· ${pivot}`;
       default:
-        return `${this.length.toFixed(1)} m${this.tension > 0 ? ` · ${(this.tension / 1000).toFixed(1)} kN` : ' · slack'} · ${pivot}`;
+        return `${this.length.toFixed(1)} m${this.tension > 0 ? ` Â· ${(this.tension / 1000).toFixed(1)} kN` : ' Â· slack'} Â· ${pivot}`;
     }
   }
 

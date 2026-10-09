@@ -37,6 +37,8 @@ export class PixelGrid {
   readonly mat: Uint8Array;
   readonly hp: Float32Array;
   readonly shade: Uint8Array;
+  /** Per-cell visual heat (0..~1.2): glow from the cutter, cools over time. Cosmetic only. */
+  readonly heat: Float32Array;
 
   constructor(
     readonly w: number,
@@ -45,6 +47,7 @@ export class PixelGrid {
     this.mat = new Uint8Array(w * h);
     this.hp = new Float32Array(w * h);
     this.shade = new Uint8Array(w * h);
+    this.heat = new Float32Array(w * h);
   }
 
   inside(x: number, y: number): boolean {
@@ -116,6 +119,7 @@ export class PixelGrid {
       const i = cells[k];
       this.mat[i] = M.EMPTY;
       this.hp[i] = 0;
+      this.heat[i] = 0;
     }
   }
 
