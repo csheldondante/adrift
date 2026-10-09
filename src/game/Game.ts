@@ -181,7 +181,7 @@ export class Game {
     this.hazards.update(dt);
     this.pixels.flush();
     this.applyFieldForces(dt);
-    this.applyBounds(dt);
+    this.cullFarBodies();
     this.physics.step();
     this.pixels.syncTransforms();
     this.applyDamage(dt);
@@ -205,25 +205,18 @@ export class Game {
     if (this.ship.alive) push(this.ship.body, 1.8);
   }
 
-  /** Soft boundary: anything leaving the world rectangle is eased back in. */
-  private applyBounds(dt: number): void {
-    const margin = 4;
-    const k = 6;
-    const bound = (body: Body) => {
-      const t = body.translation();
-      let fx = 0;
-      let fy = 0;
-      if (t.x < margin) fx = margin - t.x;
-      else if (t.x > this.worldW - margin) fx = this.worldW - margin - t.x;
-      if (t.y < margin) fy = margin - t.y;
-      else if (t.y > this.worldH - margin) fy = this.worldH - margin - t.y;
-      if (fx || fy) {
-        const m = body.mass();
-        body.applyImpulse({ x: fx * k * m * dt, y: fy * k * m * dt }, true);
-      }
-    };
-    for (const b of this.pixels.bodies) bound(b.body);
-    bound(this.ship.body);
+  /**
+   * No boundary forces: things that drift off keep drifting. Debris far outside the level
+   * (and not salvage or on the tether) is deleted purely to save CPU; it could never
+   * come back on its own anyway.
+   */
+  private cullFarBodies(): void {
+    const far = 150; // m beyond the level rectangle
+    for (const b of this.pixels.bodies.slice()) {
+      if (b.tags.salvage || this.grapple.targetObject === b) continue;
+      const t = b.body.translation();
+      if (t.x < -far || t.y < -far || t.x > this.worldW + far || t.y > this.worldH + far) this.pixels.removeBody(b);
+    }
   }
 
   private applyDamage(dt: number): void {

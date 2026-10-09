@@ -2,6 +2,10 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-09 — No out-of-bounds spring
+
+The soft boundary that pushed bodies back into the level rectangle is gone. The user found it weird in a physics game: things that should drift off came back. Nothing applies boundary forces now, the ship included. Debris more than 150 m outside the level is deleted to save CPU, since with no forces acting on it, it could never return. Salvage and whatever is on the tether are never deleted. If someone loses the core to deep space, that is a legitimate physical outcome; they can still chase it.
+
 ## 2026-10-09 — Turning, rope physics, grapple pivot
 
 ### Turning is a rate controller, not raw torque (user: "too floaty")

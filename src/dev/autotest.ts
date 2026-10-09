@@ -37,7 +37,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
   const solidCount = () => game().pixels.terrain.grid.countSolid();
 
   await sleep(800);
-  const modes = mode === 'all' ? ['fly', 'turn', 'cut', 'vent', 'boom', 'grapple', 'rope'] : [mode];
+  const modes = mode === 'all' ? ['fly', 'turn', 'drift', 'cut', 'vent', 'boom', 'grapple', 'rope'] : [mode];
   for (const md of modes) {
     restart();
     await sleep(300);
@@ -115,6 +115,16 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       }
       tune.ship.rotationAssist = assist;
       tune.grapple.pivot = 'com';
+    }
+    if (md === 'drift') {
+      // no boundary forces: a body thrown past the level edge must keep going
+      const g = game();
+      const b = g.pixels.bodies.find((x) => !x.tags.salvage)!;
+      b.body.setTranslation({ x: 125, y: 40 }, true);
+      b.body.setLinvel({ x: 8, y: 0 }, true);
+      await sleep(1500);
+      const v = b.body.linvel();
+      log('drift', { x: +b.body.translation().x.toFixed(1), vx: +v.x.toFixed(2), alive: b.alive });
     }
     if (md === 'cut') {
       // slice the hold roof at two x positions (from above) so the section between detaches
