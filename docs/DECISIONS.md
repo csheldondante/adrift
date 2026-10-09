@@ -2,6 +2,35 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-09 — Grapple v3: coiled rope, drifting head, gentle snug; impacts; RCS brake
+
+### What the user asked for
+- "Shoot out with slack cord visible that unfurls until it clamps… pull taut as soon as it makes contact… a little bit of spring."
+- The goal: round corners, grab hazards and whip them into things, pull a door off its hinges after cutting the bolts.
+- After seeing v2, the user said it was "way too noisy and chaotic and should be drifty and slow. A rope that uncoils as the head flies off until it is at tension… way more dampening… loops or coils that unfurl so the ones far from the head take time to change due to the propagating tension."
+
+### Design now
+- **Coil at fire:** the full rope (22 m) spawns as a flat spiral coil at the nose. A weighted head (6 kg) is launched at 16 m/s and flies freely, with nothing forcing its velocity.
+- **Unfurling is emergent:** the cord is light (0.35 kg segments, about 15 kg total) and joined by max-distance links. Tension reaches the loops next to the head first, and the far coils lag. The head slows as it drags more rope; measured head distance every 150 ms: 4.6, 6.0, 7.4, 8.5 … 13.4 m.
+- **Heavy damping on segments** (linear damping 1.5) and on the stretch spring (0.9 of critical) is what makes it read as floaty instead of jittery.
+- **Bite:** the head bites when a pixel raycast along its motion, or a short probe in four directions, finds matter. The anchor snaps to the nearest solid cell. The earlier half-cell nudge could land just outside a plate, the anchor check then dropped the hook immediately, and the ship flew into the roof. If a cut removes the anchor cell, the hook re-seats on a solid neighbor within 2 cells before letting go.
+- **Gentle auto-winch:** after the bite, a 6 m/s winch reels in until the ends are a full rope-length apart, or until the 0.3 s average tension exceeds 1.5 kN (wrapped around a corner, or already hauling a load). It never reels past the target in one step. Momentary tension spikes from the head's momentum stretching the front links are deliberately ignored; they stopped the winch at about 50% slack.
+- **Miss:** the head stalls, hangs for 0.8 s, then reels home at 10 m/s. Right-click reels home early.
+
+### Rejected along the way (v2, the same day)
+- **Hook velocity forced each step, with rope paid out from the ship:** chaotic. Each new segment yanked the ship through its short link, and the 100 kg of cord moving at 25 m/s dragged the ship to about 10 m/s on impact. A free-spool fix with momentum bleeding worked, but looked noisy. The coil design replaces all of that.
+- **Counting only links stretched past rest as tension:** rejected. The ship-end link's rest length doesn't match its geometry, so it showed phantom tension. Path length minus rest length (the signed sum) is used instead.
+- **Spring damping from dE/dt:** spiked every time the winch shortened a link, and yanked. Damping now uses how fast the two rope ends are separating.
+
+### Impacts ("whip hazards into things")
+- **Pixel bodies report contact forces.** An explosive body detonates on a hit that changes its velocity by more than 7 m/s.
+- **Heavy hits damage pixel matter at the contact point:** impulses above 250 N·s, at 0.5 hp per N·s, within a 0.5 m radius, on both bodies. A 219 kg crate at 22 m/s chips the hull.
+- **No structural-stress breaking yet.** "Pull the door off" works by cutting it free, then hauling. Hinges that tear under rope tension would need a stress model; it's a candidate next step.
+
+### Flight assist RCS brake (user request)
+- When not thrusting, RCS jets push against drift with a bounded force (700 N, about 2.3 m/s² unloaded). It's a real force, so towed loads slow far less. It shows as white side puffs on the hull facing the drift, plus nose/tail puffs while turning.
+- This deliberately supersedes "no braking" from the initial build. It can be toggled in the tuning panel.
+
 ## 2026-10-09 — No out-of-bounds spring
 
 The soft boundary that pushed bodies back into the level rectangle is gone. The user found it weird in a physics game: things that should drift off came back. Nothing applies boundary forces now, the ship included. Debris more than 150 m outside the level is deleted to save CPU, since with no forces acting on it, it could never return. Salvage and whatever is on the tether are never deleted. If someone loses the core to deep space, that is a legitimate physical outcome; they can still chase it.

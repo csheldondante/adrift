@@ -24,15 +24,24 @@ export function createDebugPanel(actions: DebugActions): GUI {
   s.add(tune.ship, 'turnAccel', 2, 150, 1).name('turn accel (rad/s²)');
   s.add(tune.ship, 'density', 20, 600, 5).name('density (restart)');
   s.add(tune.ship, 'rotationAssist');
+  s.add(tune.ship, 'flightAssist').name('flight assist (RCS brake)');
+  s.add(tune.ship, 'brakeForce', 0, 4000, 10).name('RCS brake force (N)');
 
   const g = gui.addFolder('Grapple');
   g.add(tune.grapple, 'maxLength', 4, 60, 0.5);
   g.add(tune.grapple, 'reelSpeed', 0.5, 30, 0.5);
   g.add(tune.grapple, 'pivot', ['com', 'nose']).name('ship pivot (P)').listen();
   g.add(tune.grapple, 'segmentLength', 0.2, 2, 0.05).name('segment length (next grapple)');
-  g.add(tune.grapple, 'segmentMass', 0.5, 40, 0.5).name('segment mass (next grapple)');
-  g.add(tune.grapple, 'segmentDamping', 0, 5, 0.05).name('segment damping (next grapple)');
-  g.add(tune.grapple, 'safetySlack', 1, 2, 0.01).name('stretch limit');
+  g.add(tune.grapple, 'segmentMass', 0.05, 10, 0.05).name('segment mass (next grapple)');
+  g.add(tune.grapple, 'segmentDamping', 0, 8, 0.05).name('segment damping (next grapple)');
+  g.add(tune.grapple, 'stiffness', 2000, 300000, 1000).name('stiffness EA (N)');
+  g.add(tune.grapple, 'damping', 0, 3, 0.01).name('spring damping');
+  g.add(tune.grapple, 'maxStretch', 0.01, 0.6, 0.01).name('max stretch (next grapple)');
+  g.add(tune.grapple, 'hookSpeed', 2, 60, 0.5);
+  g.add(tune.grapple, 'hookMass', 0.5, 40, 0.5).name('head mass (kg)');
+  g.add(tune.grapple, 'hangTime', 0, 5, 0.1).name('miss hang time');
+  g.add(tune.grapple, 'retractSpeed', 1, 40, 0.5);
+  g.add(tune.grapple, 'tightenSpeed', 0.5, 40, 0.5).name('auto-tighten speed');
 
   const c = gui.addFolder('Cutter');
   c.add(tune.cutter, 'radius', 0.15, 2.5, 0.05);
@@ -58,6 +67,9 @@ export function createDebugPanel(actions: DebugActions): GUI {
 
   const p = gui.addFolder('Pixels');
   p.add(tune.pixel, 'debrisMinCells', 1, 200, 1);
+  p.add(tune.impact, 'damageImpulse', 10, 3000, 10).name('impact damage threshold (N·s)');
+  p.add(tune.impact, 'damageScale', 0, 5, 0.05).name('impact damage per N·s');
+  p.add(tune.impact, 'detonationDv', 1, 40, 0.5).name('barrel impact det. Δv');
 
   for (const f of [s, g, c, gs, h, p]) f.close();
   gui.hide();

@@ -58,6 +58,11 @@ export class Ship implements PhysOwner {
   private readonly flame: THREE.Mesh;
   health = tune.ship.maxHealth;
   thrustLevel = 0;
+  /** RCS braking this step, 0..1, and the drift direction it opposes (for jet visuals). */
+  brake = 0;
+  brakeDirX = 0;
+  brakeDirY = 0;
+  turnInput = 0;
   alive = true;
 
   /** Ship-local nose position in meters (+x forward). */
@@ -125,6 +130,21 @@ export class Ship implements PhysOwner {
     const f = c.thrust > 0 ? c.thrust * s.thrust : c.thrust * s.reverseThrust;
     this.thrustLevel = c.thrust;
     if (f !== 0) this.body.applyImpulse({ x: Math.cos(a) * f * dt, y: Math.sin(a) * f * dt }, true);
+    // Flight assist: when not thrusting, RCS jets push against drift with a bounded force.
+    // It's a real force on the ship (towed loads slow far less), shown as jet puffs.
+    this.brake = 0;
+    if (c.thrust === 0 && s.flightAssist && s.brakeForce > 0) {
+      const v = this.body.linvel();
+      const speed = Math.hypot(v.x, v.y);
+      if (speed > 0.03) {
+        const j = Math.min(s.brakeForce * dt, this.body.mass() * speed);
+        this.body.applyImpulse({ x: (-v.x / speed) * j, y: (-v.y / speed) * j }, true);
+        this.brake = j / (s.brakeForce * dt);
+        this.brakeDirX = v.x / speed;
+        this.brakeDirY = v.y / speed;
+      }
+    }
+    this.turnInput = c.turn;
     // Turning is a rate controller with bounded angular acceleration: A/D drive spin toward
     // ±turnRate, release brakes to zero (if assist is on). It still acts through torque, so
     // impacts and off-center loads can knock the ship around and it has to recover.

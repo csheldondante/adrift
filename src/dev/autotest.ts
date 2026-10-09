@@ -35,9 +35,18 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
     input.simulateUp(code);
   };
   const solidCount = () => game().pixels.terrain.grid.countSolid();
+  const shot = async (name: string) => {
+    (window as unknown as { __shotReq: string | null }).__shotReq = name;
+    await sleep(120);
+  };
+  /** Waits for the hook to bite and the auto-winch to finish (or timeout). */
+  const waitTaut = async (ms = 6000) => {
+    const end = performance.now() + ms;
+    while (performance.now() < end && !game().grapple.snug) await sleep(16);
+  };
 
   await sleep(800);
-  const modes = mode === 'all' ? ['fly', 'turn', 'drift', 'cut', 'vent', 'boom', 'grapple', 'rope'] : [mode];
+  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'hook', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope'] : [mode];
   for (const md of modes) {
     restart();
     await sleep(300);
@@ -92,7 +101,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         input.simulateDown('Mouse2');
         await sleep(40);
         input.simulateUp('Mouse2');
-        await sleep(100);
+        await waitTaut();
         const a0 = g.ship.angle;
         let maxTaut = 0;
         let maxSpin = 0;
@@ -125,6 +134,70 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       await sleep(1500);
       const v = b.body.linvel();
       log('drift', { x: +b.body.translation().x.toFixed(1), vx: +v.x.toFixed(2), alive: b.alive });
+    }
+    if (md === 'hook') {
+      const g = game();
+      const fireAt = (x: number, y: number) => {
+        aim(x, y);
+        input.simulateDown('Mouse2');
+        setTimeout(() => input.simulateUp('Mouse2'), 20);
+      };
+      // 1) miss into open space: watch the coil unfurl (head distance over time)
+      place(m(150), m(380), Math.PI);
+      await sleep(100);
+      const s0 = { x: g.ship.x, y: g.ship.y };
+      fireAt(m(20), m(380));
+      const dists: number[] = [];
+      for (let i = 0; i < 12; i++) {
+        await sleep(150);
+        if (i === 1) shot('unfurl-0.3s');
+        if (i === 4) shot('unfurl-0.75s');
+        if (i === 8) shot('unfurl-1.35s');
+        const h = g.grapple.headPosition;
+        dists.push(h ? +Math.hypot(h.x - s0.x, h.y - s0.y).toFixed(1) : -1);
+      }
+      const v = g.ship.body.linvel();
+      log('hook unfurl', { headDistEvery150ms: dists.join(' '), state: g.grapple.state, shipSpeed: +Math.hypot(v.x, v.y).toFixed(2) });
+      await sleep(5000);
+      log('hook miss', { stateAfter: g.grapple.state });
+      // 2) bite the prow from ~11 m and snug up
+      g.grapple.detach();
+      place(m(150), m(380), 0);
+      await sleep(100);
+      const t0 = performance.now();
+      fireAt(m(260), m(380));
+      let tBite = -1;
+      while (performance.now() - t0 < 5000) {
+        if (tBite < 0 && g.grapple.attached) tBite = performance.now() - t0;
+        if (tBite >= 0 && g.grapple.snug) break;
+        await sleep(10);
+      }
+      const tTaut = performance.now() - t0;
+      shot('hook-taut');
+      const v2 = g.ship.body.linvel();
+      log('hook bite', { biteMs: Math.round(tBite), snugMs: Math.round(tTaut), endRatio: +g.grapple.endRatio.toFixed(2), len: +g.grapple.length.toFixed(2), shipSpeed: +Math.hypot(v2.x, v2.y).toFixed(2), health: Math.round(g.ship.health) });
+    }
+    if (md === 'brake') {
+      const g = game();
+      await hold('KeyW', 700);
+      const v0 = Math.hypot(g.ship.body.linvel().x, g.ship.body.linvel().y);
+      await sleep(1000);
+      const v1 = Math.hypot(g.ship.body.linvel().x, g.ship.body.linvel().y);
+      log('brake', { v0: +v0.toFixed(2), after1s: +v1.toFixed(2) });
+    }
+    if (md === 'impact') {
+      // whip-style hits: a barrel and a crate thrown into the hull
+      const g = game();
+      place(m(150), m(600), 0);
+      const barrel = g.pixels.bodies.find((b) => b.explosiveCells > 0)!;
+      barrel.body.setTranslation({ x: m(200), y: m(300) }, true);
+      barrel.body.setLinvel({ x: 25, y: 0 }, true);
+      const crate = g.pixels.bodies.find((b) => !b.explosiveCells && !b.tags.salvage && b.body.mass() > 100)!;
+      crate.body.setTranslation({ x: m(200), y: m(460) }, true);
+      crate.body.setLinvel({ x: 22, y: 0 }, true);
+      const before = solidCount();
+      await sleep(1500);
+      log('impact', { explosions: g.hazards.explosions, crateMass: Math.round(crate.body.mass()), removed: before - solidCount() });
     }
     if (md === 'cut') {
       // slice the hold roof at two x positions (from above) so the section between detaches
@@ -175,17 +248,17 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       const target = g.salvage;
       const c = target.body.worldCom();
       // put the ship inside the hold (as if a way in was cut), next to the core
-      place(c.x - 6, c.y + 1, 0);
+      place(c.x - 5.25, c.y + 6, Math.PI / 2); // open hold space up-left of the core, clear of the pillar
       await sleep(200);
       aim(c.x, c.y);
       input.simulateDown('Mouse2');
       await sleep(50);
       input.simulateUp('Mouse2');
-      await sleep(100);
+      await waitTaut();
       log('grapple attach', { health: Math.round(g.ship.health), attached: g.grapple.attached, toCore: g.grapple.targetObject === target, len: +g.grapple.length.toFixed(2) });
       const c0 = target.body.worldCom();
-      aim(c.x - 20, c.y);
-      g.ship.body.setRotation(Math.PI, true);
+      aim(c.x - 5.25, c.y + 20);
+
       await hold('KeyW', 1500);
       const c1 = target.body.worldCom();
       log('grapple tow', { health: Math.round(g.ship.health), coreMoved: +Math.hypot(c1.x - c0.x, c1.y - c0.y).toFixed(2), coreMass: Math.round(target.body.mass()), shipMass: Math.round(g.ship.body.mass()) });

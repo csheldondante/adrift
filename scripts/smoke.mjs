@@ -36,11 +36,22 @@ page.on('console', (m) => {
 page.on('pageerror', (e) => { errors++; console.log(`[pageerror] ${e.message}\n${e.stack ?? ''}`); });
 
 await page.goto(url);
+// autotests can request a screenshot at an exact moment: window.__shotReq = "name"
+let polling = true;
+const poll = (async () => {
+  while (polling) {
+    const req = await page.evaluate(() => { const r = window.__shotReq; window.__shotReq = null; return r; }).catch(() => null);
+    if (req) await page.screenshot({ path: path.join(outDir, `${req}.png`) });
+    await new Promise((r) => setTimeout(r, 30));
+  }
+})();
 const shots = Math.max(1, Math.round(seconds / 2));
 for (let i = 0; i < shots; i++) {
   await page.waitForTimeout((seconds * 1000) / shots);
   await page.screenshot({ path: path.join(outDir, `shot-${i}.png`) });
 }
+polling = false;
+await poll;
 const stats = await page.evaluate(() => (window).__stats ?? null);
 console.log('STATS', JSON.stringify(stats));
 console.log(`ERRORS ${errors}`);

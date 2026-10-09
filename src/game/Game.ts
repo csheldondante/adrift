@@ -221,11 +221,34 @@ export class Game {
 
   private applyDamage(dt: number): void {
     const s = tune.ship;
+    const imp = tune.impact;
     for (const cf of this.physics.contactForces) {
-      if (cf.a !== this.ship && cf.b !== this.ship) continue;
-      if (cf.force > s.impactDamageThreshold) {
-        this.ship.damage((cf.force - s.impactDamageThreshold) * s.impactDamageScale);
-        this.app.stage.shake(Math.min(0.4, cf.force / 400000));
+      if (cf.a === this.ship || cf.b === this.ship) {
+        if (cf.force > s.impactDamageThreshold) {
+          this.ship.damage((cf.force - s.impactDamageThreshold) * s.impactDamageScale);
+          this.app.stage.shake(Math.min(0.4, cf.force / 400000));
+        }
+        continue;
+      }
+      if (cf.a?.kind === 'rope' || cf.b?.kind === 'rope') continue;
+      const j = cf.force * dt; // impulse this step (N·s)
+      // explosive bodies (barrels) go off when hit hard enough — whip them into things
+      for (const o of [cf.a, cf.b]) {
+        if (o?.kind !== 'pixelBody') continue;
+        const b = o as PixelBody;
+        if (b.alive && b.explosiveCells > 0 && j / b.body.mass() > imp.detonationDv) {
+          const c = b.body.worldCom();
+          this.hazards.trigger(c.x, c.y, 0);
+        }
+      }
+      // heavy hits chip pixel matter at the contact point (both sides take it)
+      if (j > imp.damageImpulse) {
+        const p = this.physics.contactPoint(cf.h1, cf.h2);
+        if (!p) continue;
+        this.pixels.damageCircle(p.x, p.y, imp.damageRadius, (j - imp.damageImpulse) * imp.damageScale);
+        for (let k = 0; k < 6; k++) this.particles.spark(p.x, p.y, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, 0.25, 0.08, 0.3);
+        const d = Math.hypot(p.x - this.ship.x, p.y - this.ship.y);
+        this.app.stage.shake(Math.min(0.3, j / 20000) * Math.max(0, 1 - d / 40));
       }
     }
     if (this.ship.alive) {
@@ -241,16 +264,43 @@ export class Game {
 
   private engineFx(): void {
     const sh = this.ship;
-    if (!sh.alive || sh.thrustLevel === 0) return;
+    if (!sh.alive) return;
     const a = sh.angle;
-    const dir = sh.thrustLevel > 0 ? -1 : 1;
-    const ox = sh.x + Math.cos(a) * (dir < 0 ? -1.4 : 0.9);
-    const oy = sh.y + Math.sin(a) * (dir < 0 ? -1.4 : 0.9);
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
     const v = sh.body.linvel();
+    // RCS: braking jets fire on the side facing the drift, exhaust going with the drift
+    if (sh.brake > 0.05 && Math.random() < 0.35 + sh.brake * 0.65) {
+      const px = -sh.brakeDirY;
+      const py = sh.brakeDirX;
+      const off = (Math.random() - 0.5) * 1.2;
+      const ox = sh.x + sh.brakeDirX * 0.9 + px * off;
+      const oy = sh.y + sh.brakeDirY * 0.9 + py * off;
+      const sp = 5 + Math.random() * 4;
+      this.particles.glint(ox, oy, v.x + sh.brakeDirX * sp, v.y + sh.brakeDirY * sp, 0.75, 0.85, 1, 0.14 + Math.random() * 0.1, 0.09);
+    }
+    // RCS: turning jets at nose and tail, opposite sides
+    if (sh.turnInput !== 0 && Math.random() < 0.7) {
+      const t = sh.turnInput;
+      for (const [along, side] of [
+        [0.8, -t],
+        [-1.1, t],
+      ]) {
+        const ox = sh.x + ca * along;
+        const oy = sh.y + sa * along;
+        const ex = -sa * side * 6;
+        const ey = ca * side * 6;
+        this.particles.glint(ox, oy, v.x + ex, v.y + ey, 0.75, 0.85, 1, 0.12, 0.08);
+      }
+    }
+    if (sh.thrustLevel === 0) return;
+    const dir = sh.thrustLevel > 0 ? -1 : 1;
+    const ox = sh.x + ca * (dir < 0 ? -1.4 : 0.9);
+    const oy = sh.y + sa * (dir < 0 ? -1.4 : 0.9);
     const sp = 6 + Math.random() * 4;
     const spread = (Math.random() - 0.5) * 2.5;
-    const ex = Math.cos(a) * dir * sp - Math.sin(a) * spread + v.x;
-    const ey = Math.sin(a) * dir * sp + Math.cos(a) * spread + v.y;
+    const ex = ca * dir * sp - sa * spread + v.x;
+    const ey = sa * dir * sp + ca * spread + v.y;
     if (dir < 0) this.particles.fire(ox, oy, ex, ey, 0.18, 0.18);
     else this.particles.spark(ox, oy, ex, ey, 0.15, 0.06, 0.2);
   }

@@ -23,23 +23,32 @@ export const tune = {
     turnRate: 4.5, // rad/s max spin from A/D
     turnAccel: 45, // rad/s² (spin-up and braking; torque scales with inertia)
     density: 160, // kg/m² (ship collider, ~300 kg)
-    rotationAssist: true, // brakes spin when A/D released (no linear braking)
+    rotationAssist: true, // brakes spin when A/D released
+    flightAssist: true, // RCS jets brake drift when not thrusting (visible as side puffs)
+    brakeForce: 700, // N of braking from the RCS jets (≈2.3 m/s² unloaded)
     maxHealth: 100,
     impactDamageThreshold: 30000, // contact force (N) before hull damage starts (~1.7 m/s bump)
     impactDamageScale: 0.0002,
     heatDamage: 25, // hp/s at heat 1
   },
   grapple: {
-    maxLength: 26, // m
+    maxLength: 22, // m of rope on the spool
     minLength: 1.5,
-    reelSpeed: 7, // m/s
+    reelSpeed: 5, // m/s (Q/E)
     segmentLength: 0.5, // m per physical rope segment
-    segmentMass: 4, // kg per segment
-    segmentDamping: 0.4, // linear damping on segments only (kills endless zero-G wobble)
+    segmentMass: 0.35, // kg per segment (whole cord ≈ 15 kg) — light vs the head so it unfurls
+    segmentDamping: 1.5, // linear damping on segments: slack rope drifts and settles, no jitter
     /** Where the rope attaches to the ship: center of mass (no torque) or nose (tension steers the ship). */
     pivot: 'com' as 'com' | 'nose',
-    /** Hidden straight-line limit = length × this; stops heavy loads stretching the chain. */
-    safetySlack: 1.03,
+    hookSpeed: 16, // m/s launch speed of the head (plus ship velocity); slows as it drags rope out
+    hookMass: 6, // kg; heavier head = carries the coil further
+    tightenSpeed: 6, // m/s gentle auto-winch after the hook bites, until the rope is taut
+    snugTension: 1500, // N sustained tension at which the auto-winch considers the rope snug
+    retractSpeed: 10, // m/s reel-in after a miss
+    hangTime: 0.8, // s a missed hook hangs at full extension before reeling home
+    stiffness: 40000, // N per unit strain (EA): 3000 N tow ≈ 7.5% stretch
+    damping: 0.9, // fraction of critical damping on the stretch spring (high = no bounce-chatter)
+    maxStretch: 0.15, // hard limit beyond the spring
   },
   cutter: {
     radius: 0.55, // m
@@ -63,6 +72,13 @@ export const tune = {
     explosionHeat: 2.5,
     ignitionHeat: 1.6,
     chainDelay: 0.09, // s
+  },
+  impact: {
+    eventThreshold: 2000, // N contact force before pixel bodies report impacts
+    damageImpulse: 250, // N·s per hit before pixel matter takes damage
+    damageScale: 0.5, // hp per N·s above threshold
+    damageRadius: 0.5, // m
+    detonationDv: 7, // m/s velocity change in one hit that sets off an explosive body
   },
   pixel: {
     debrisMinCells: 10, // components smaller than this become particles

@@ -1,19 +1,30 @@
-// Physical tether: a chain of small dynamic segments linked by rope (max-distance) joints,
-// running from an anchor on a target body to an anchor on the ship. Segments collide with
-// terrain and loose bodies, so the rope wraps around corners and sags with slack.
+// Physical tether: a chain of light dynamic segments from a target end (the flying hook head,
+// or whatever it bit into) to an anchor on the ship. Segments collide with terrain and loose
+// bodies, so the rope drifts, loops, wraps around corners and sags.
 //
-// A hidden straight-line rope joint (length × safetySlack) between the two ends caps
-// stretch: light segments between heavy bodies stretch under iterative solvers. The cap
-// never binds while the chain is wrapped (the path is longer than the straight line).
+// The rope can start from any layout (the grapple spawns it coiled at the nose). Because
+// links are max-distance joints between massive segments, tension propagates down the chain
+// one link at a time: when the head flies off, the loops nearest it straighten first and the
+// far coils follow later.
 //
-// Reeling adds/removes segments at the ship end; the ship-end link takes the fractional
+// Tension model ("a little spring"):
+//   - Rest length L. Every joint is a hard max-distance limit at L·(1+maxStretch), plus a
+//     hidden straight-line cap between the ends at the same limit.
+//   - Beyond L, a one-sided spring acts on the rope's path length (works around corners):
+//     T = k·(path − L) + c·(end separation speed), k = EA/L, clamped so the explicit spring
+//     stays stable at the physics step. The ends are pulled along the rope at each end;
+//     segments get the same tension (capped for stability) so a taut rope straightens.
+//   - Slack rope (path ≤ L) carries no force. Segments are heavily damped so slack rope
+//     drifts and settles instead of jittering.
+//
+// Reeling adds/removes segments at the ship end; the ship-end link carries the fractional
 // remainder so length changes are continuous.
 //
-// Likely growth: rope-rope interactions (tying objects together), tension-based snapping,
-// cutting the rope with the cutter. Segments are plain bodies, so all of that is local here.
+// Likely growth: cutting/snapping at a tension limit, tying two objects together. The target
+// end is swappable (setTarget), which is what the hook uses when it bites.
 
 import type RAPIER from '@dimforge/rapier2d-compat';
-import { tune } from '../config';
+import { FIXED_DT, tune } from '../config';
 import { ROPE_GROUPS, type Body, type PhysOwner, type Physics } from '../physics/Physics';
 
 export interface RopeEnd {
@@ -22,8 +33,11 @@ export interface RopeEnd {
   local: { x: number; y: number };
 }
 
+type P = { x: number; y: number };
+
 const SEG_RADIUS = 0.06;
 const ROPE_OWNER: PhysOwner = { kind: 'rope' };
+const ZERO = { x: 0, y: 0 };
 
 export class Rope {
   /** segs[0] is next to the target; the last segment is next to the ship. */
@@ -31,42 +45,67 @@ export class Rope {
   private readonly links: RAPIER.ImpulseJoint[] = []; // links[i] joins segs[i] -> segs[i+1]
   private targetJoint: RAPIER.ImpulseJoint | null = null;
   private shipJoint: RAPIER.ImpulseJoint | null = null;
-  private safetyJoint: RAPIER.ImpulseJoint | null = null;
+  private capJoint: RAPIER.ImpulseJoint | null = null;
   private shipJointLen = 0;
-  private safetyLen = 0;
+  private capLen = 0;
   private readonly segLen: number;
+  private readonly stretchMax: number;
+  private readonly pts: P[] = [];
   length: number;
+  /** Current spring tension (N), for visuals/HUD. */
+  tension = 0;
 
+  /**
+   * @param layout optional world positions for the segments, target side first; must have
+   *   segmentsFor(length) entries spaced ≤ segmentLength apart. Defaults to a straight line.
+   */
   constructor(
     private readonly physics: Physics,
     private ship: RopeEnd,
-    private readonly target: RopeEnd,
+    private target: RopeEnd,
     length: number,
+    layout?: P[],
   ) {
     this.segLen = tune.grapple.segmentLength;
+    this.stretchMax = 1 + tune.grapple.maxStretch;
     this.length = length;
+    const n = this.segmentsFor(length);
     const a = this.endWorld(target);
     const b = this.endWorld(ship);
-    const n = this.segmentsFor(length);
-    // lay segments along the straight line from target to ship
     for (let i = 0; i < n; i++) {
       const t = (i + 0.5) / n;
-      this.segs.push(this.makeSegment(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, this.target.body));
+      const p = layout?.[i] ?? { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      this.segs.push(this.makeSegment(p.x, p.y, ship.body));
     }
-    const w = this.physics.world;
-    const R = this.physics.R;
-    for (let i = 0; i + 1 < n; i++) this.links.push(w.createImpulseJoint(R.JointData.rope(this.segLen, ZERO, ZERO), this.segs[i], this.segs[i + 1], true));
-    this.targetJoint = w.createImpulseJoint(R.JointData.rope(this.segLen * 0.5, target.local, ZERO), target.body, this.segs[0], true);
+    for (let i = 0; i + 1 < n; i++) this.links.push(this.link(this.segs[i], this.segs[i + 1]));
+    this.attachTargetJoint();
     this.rebuildShipJoint();
-    this.rebuildSafety();
+    this.rebuildCap();
   }
 
-  private endWorld(e: RopeEnd): { x: number; y: number } {
+  /** Number of segments for a rest length: half-segment target link + (n-1) links + ship link. */
+  static segmentsFor(len: number): number {
+    const s = tune.grapple.segmentLength;
+    return Math.max(1, Math.ceil((len - s * 0.5) / s));
+  }
+
+  private segmentsFor(len: number): number {
+    return Rope.segmentsFor(len);
+  }
+
+  private link(a: Body, b: Body): RAPIER.ImpulseJoint {
+    const { world, R } = this.physics;
+    return world.createImpulseJoint(R.JointData.rope(this.segLen * this.stretchMax, ZERO, ZERO), a, b, true);
+  }
+
+  private endWorld(e: RopeEnd, out: P = { x: 0, y: 0 }): P {
     const t = e.body.translation();
     const a = e.body.rotation();
     const c = Math.cos(a);
     const s = Math.sin(a);
-    return { x: t.x + c * e.local.x - s * e.local.y, y: t.y + s * e.local.x + c * e.local.y };
+    out.x = t.x + c * e.local.x - s * e.local.y;
+    out.y = t.y + s * e.local.x + c * e.local.y;
+    return out;
   }
 
   private makeSegment(x: number, y: number, velFrom: Body): Body {
@@ -84,15 +123,15 @@ export class Rope {
     return body;
   }
 
-  /** Length = half-segment target link + (n-1) full links + ship link in (0, segLen]. */
-  private segmentsFor(len: number): number {
-    return Math.max(1, Math.ceil((len - this.segLen * 0.5) / this.segLen));
-  }
-
-  /** Remainder of the length carried by the ship-end link, in (0, segLen]. */
+  /** Rest length of the ship-end link, in (0, segLen]. */
   private shipLinkLength(): number {
     const rest = this.length - this.segLen * 0.5 - (this.segs.length - 1) * this.segLen;
     return Math.max(0.05, rest);
+  }
+
+  private attachTargetJoint(): void {
+    const { world, R } = this.physics;
+    this.targetJoint = world.createImpulseJoint(R.JointData.rope(this.segLen * 0.5 * this.stretchMax, this.target.local, ZERO), this.target.body, this.segs[0], true);
   }
 
   private rebuildShipJoint(): void {
@@ -100,40 +139,50 @@ export class Rope {
     if (this.shipJoint) w.removeImpulseJoint(this.shipJoint, true);
     this.shipJointLen = this.shipLinkLength();
     const last = this.segs[this.segs.length - 1];
-    this.shipJoint = w.createImpulseJoint(this.physics.R.JointData.rope(this.shipJointLen, ZERO, this.ship.local), last, this.ship.body, true);
+    this.shipJoint = w.createImpulseJoint(this.physics.R.JointData.rope(this.shipJointLen * this.stretchMax, ZERO, this.ship.local), last, this.ship.body, true);
   }
 
-  private rebuildSafety(): void {
+  private rebuildCap(): void {
     const w = this.physics.world;
-    if (this.safetyJoint) w.removeImpulseJoint(this.safetyJoint, true);
-    this.safetyLen = this.length * tune.grapple.safetySlack;
-    this.safetyJoint = w.createImpulseJoint(this.physics.R.JointData.rope(this.safetyLen, this.target.local, this.ship.local), this.target.body, this.ship.body, true);
+    if (this.capJoint) w.removeImpulseJoint(this.capJoint, true);
+    this.capLen = this.length * this.stretchMax;
+    this.capJoint = w.createImpulseJoint(this.physics.R.JointData.rope(this.capLen, this.target.local, this.ship.local), this.target.body, this.ship.body, true);
+  }
+
+  /** Re-anchors the target end (e.g. the hook bit into something). Old target body must still exist. */
+  setTarget(end: RopeEnd): void {
+    const w = this.physics.world;
+    if (this.targetJoint) w.removeImpulseJoint(this.targetJoint, true);
+    if (this.capJoint) w.removeImpulseJoint(this.capJoint, true);
+    this.capJoint = null;
+    this.target = end;
+    this.attachTargetJoint();
+    this.rebuildCap();
   }
 
   /** Moves the ship-side anchor (e.g. pivot mode changed). */
-  setShipAnchor(local: { x: number; y: number }): void {
+  setShipAnchor(local: P): void {
     this.ship = { body: this.ship.body, local };
     this.rebuildShipJoint();
-    this.rebuildSafety();
+    this.rebuildCap();
   }
 
   setLength(len: number): void {
     if (Math.abs(len - this.length) < 1e-4) return;
     this.length = len;
     const w = this.physics.world;
-    const R = this.physics.R;
     const needed = this.segmentsFor(len);
     let changed = false;
     while (this.segs.length > needed) {
       // reel in: drop the ship-end segment (its joints go with it)
       const s = this.segs.pop()!;
       this.links.pop();
-      if (this.shipJoint) this.shipJoint = null; // removed with the body
+      this.shipJoint = null; // removed with the body
       this.physics.removeBody(s);
       changed = true;
     }
     while (this.segs.length < needed) {
-      // reel out: new segment at the ship anchor
+      // pay out: new segment at the ship anchor
       const p = this.endWorld(this.ship);
       const last = this.segs[this.segs.length - 1];
       if (this.shipJoint) {
@@ -141,32 +190,53 @@ export class Rope {
         this.shipJoint = null;
       }
       const s = this.makeSegment(p.x, p.y, this.ship.body);
-      this.links.push(w.createImpulseJoint(R.JointData.rope(this.segLen, ZERO, ZERO), last, s, true));
+      this.links.push(this.link(last, s));
       this.segs.push(s);
       changed = true;
     }
     if (changed || Math.abs(this.shipLinkLength() - this.shipJointLen) > 0.01) this.rebuildShipJoint();
-    if (Math.abs(this.length * tune.grapple.safetySlack - this.safetyLen) > 0.05) this.rebuildSafety();
+    if (Math.abs(this.length * this.stretchMax - this.capLen) > 0.05) this.rebuildCap();
   }
 
   /** World points along the rope: target anchor, segments…, ship anchor. */
-  points(out: { x: number; y: number }[]): number {
+  points(out: P[]): number {
     let n = 0;
-    const put = (x: number, y: number) => {
-      if (!out[n]) out[n] = { x: 0, y: 0 };
-      out[n].x = x;
-      out[n].y = y;
-      n++;
-    };
-    const a = this.endWorld(this.target);
-    put(a.x, a.y);
+    const slot = () => (out[n] ??= { x: 0, y: 0 });
+    this.endWorld(this.target, slot());
+    n++;
     for (const s of this.segs) {
       const t = s.translation();
-      put(t.x, t.y);
+      const p = slot();
+      p.x = t.x;
+      p.y = t.y;
+      n++;
     }
-    const b = this.endWorld(this.ship);
-    put(b.x, b.y);
+    this.endWorld(this.ship, slot());
+    n++;
     return n;
+  }
+
+  pathLength(): number {
+    const n = this.points(this.pts);
+    let d = 0;
+    for (let i = 1; i < n; i++) d += Math.hypot(this.pts[i].x - this.pts[i - 1].x, this.pts[i].y - this.pts[i - 1].y);
+    return d;
+  }
+
+  /**
+   * Elastic extension = path length − rest length (≥ 0). This is the signed sum of link
+   * stretch, so bunched links offset stretched ones and a slack cord carries no tension.
+   * (A per-link "only count stretched links" measure was tried and rejected: the ship-end
+   * link's rest bookkeeping doesn't always match geometry, and it read as stretched while
+   * the cord was 15% slack.) Also refreshes this.pts for the caller.
+   */
+  extension(): number {
+    return Math.max(0, this.pathLength() - this.length);
+  }
+
+  /** Path length / rest length (≥ 1 means taut, >1 stretched). */
+  tautness(): number {
+    return this.pathLength() / this.length;
   }
 
   /** Straight anchor-to-anchor distance / rest length. */
@@ -176,28 +246,75 @@ export class Rope {
     return Math.hypot(a.x - b.x, a.y - b.y) / this.length;
   }
 
-  /** Current path length / rest length (≥ ~1 means taut). */
-  tautness(): number {
-    const pts: { x: number; y: number }[] = [];
-    const n = this.points(pts);
-    let d = 0;
-    for (let i = 1; i < n; i++) d += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-    return d / this.length;
+  /** Separation speed of each end from its neighbor along the rope (damping input). */
+  private endSeparationSpeed(pts: P[], n: number): number {
+    const sep = (body: Body, p: P, nb: Body | null, q: P) => {
+      const dx = p.x - q.x;
+      const dy = p.y - q.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 1e-5) return 0;
+      const v = body.velocityAtPoint(p);
+      const w = nb ? nb.linvel() : { x: 0, y: 0 };
+      return ((v.x - w.x) * dx + (v.y - w.y) * dy) / d;
+    };
+    const last = this.segs[this.segs.length - 1];
+    return sep(this.ship.body, pts[n - 1], last, pts[n - 2]) + sep(this.target.body, pts[0], this.segs[0], pts[1]);
   }
 
-  /**
-   * Removes the rope from the world. Call before the target body is removed.
-   */
+  /** Applies the stretch spring for one physics step. Call before the world steps. */
+  applyTension(dt = FIXED_DT): void {
+    const stretch = this.extension(); // also refreshes this.pts
+    const pts = this.pts;
+    const n = this.segs.length + 2;
+    if (stretch <= 0) {
+      this.tension = 0;
+      return;
+    }
+    // damping from how fast the ends separate along the rope (not dE/dt, which jumps
+    // whenever the winch shortens a link and would yank)
+    const rate = this.endSeparationSpeed(pts, n);
+    const g = tune.grapple;
+    const mShip = this.ship.body.mass();
+    const tb = this.target.body;
+    const invT = tb.isDynamic() ? 1 / Math.max(1e-3, tb.mass()) : 0;
+    const mRed = 1 / (1 / mShip + invT);
+    // explicit spring stability: keep ω·dt ≤ 0.5
+    const k = Math.min(g.stiffness / this.length, (0.25 / (dt * dt)) * mRed);
+    const c = 2 * g.damping * Math.sqrt(k * mRed);
+    const T = Math.max(0, k * stretch + c * rate);
+    this.tension = T;
+    if (T === 0) return;
+
+    const pull = (body: Body, from: P, to: P, mag: number) => {
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 1e-5) return;
+      body.applyImpulseAtPoint({ x: (dx / d) * mag * dt, y: (dy / d) * mag * dt }, from, true);
+    };
+    // ends: along the rope at each end
+    pull(this.ship.body, pts[n - 1], pts[n - 2], T);
+    if (tb.isDynamic()) pull(tb, pts[0], pts[1], T);
+    // segments: string tension toward both neighbors, capped so light segments stay stable
+    const segCap = (0.25 / (dt * dt)) * g.segmentMass * this.segLen * 0.5;
+    const Ts = Math.min(T, segCap);
+    for (let i = 0; i < this.segs.length; i++) {
+      const p = pts[i + 1];
+      const s = this.segs[i];
+      pull(s, p, pts[i], Ts);
+      pull(s, p, pts[i + 2], Ts);
+    }
+  }
+
+  /** Removes the rope from the world. Call before the target body is removed. */
   destroy(): void {
     const w = this.physics.world;
-    if (this.safetyJoint) w.removeImpulseJoint(this.safetyJoint, true);
+    if (this.capJoint) w.removeImpulseJoint(this.capJoint, true);
     if (this.targetJoint) w.removeImpulseJoint(this.targetJoint, true);
-    this.safetyJoint = this.targetJoint = this.shipJoint = null;
+    this.capJoint = this.targetJoint = this.shipJoint = null;
     // removing segment bodies also removes the links and the ship-end joint
     for (const s of this.segs) this.physics.removeBody(s);
     this.segs.length = 0;
     this.links.length = 0;
   }
 }
-
-const ZERO = { x: 0, y: 0 };

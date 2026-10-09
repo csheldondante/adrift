@@ -29,6 +29,8 @@ export interface ContactForce {
   a: PhysOwner | undefined;
   b: PhysOwner | undefined;
   force: number;
+  h1: number; // collider handles, for contact-point queries
+  h2: number;
 }
 
 let initialized = false;
@@ -73,6 +75,21 @@ export class Physics {
     return this.owners.get(typeof c === 'number' ? c : c.handle);
   }
 
+
+  /** First solver contact point (world) between two colliders this step, if any. */
+  contactPoint(h1: number, h2: number): { x: number; y: number } | null {
+    const c1 = this.world.getCollider(h1);
+    const c2 = this.world.getCollider(h2);
+    if (!c1 || !c2) return null;
+    let p: { x: number; y: number } | null = null;
+    this.world.contactPair(c1, c2, (m) => {
+      if (!p && m.numSolverContacts() > 0) {
+        const v = m.solverContactPoint(0);
+        if (v) p = { x: v.x, y: v.y };
+      }
+    });
+    return p;
+  }
   step(): void {
     this.world.step(this.events);
     this.contactForces.length = 0;
@@ -81,6 +98,8 @@ export class Physics {
         a: this.owners.get(e.collider1()),
         b: this.owners.get(e.collider2()),
         force: e.totalForceMagnitude(),
+        h1: e.collider1(),
+        h2: e.collider2(),
       });
     });
     this.events.drainCollisionEvents(() => {});

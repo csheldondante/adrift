@@ -5,7 +5,7 @@
 // tags (salvage, explosive barrel, enemy hull) live in `tags` rather than subclasses so a
 // body keeps its identity across splits where that makes sense.
 
-import { CELL } from '../config';
+import { CELL, tune } from '../config';
 import { F, MAT_DENSITY, MAT_FLAGS } from './materials';
 import { PixelGrid } from './PixelGrid';
 import { PixelObject } from './PixelObject';
@@ -75,7 +75,9 @@ export class PixelBody extends PixelObject {
         .setTranslation((x + w / 2) * CELL, (y + h / 2) * CELL)
         .setDensity(dens / (w * h))
         .setFriction(0.5)
-        .setRestitution(0.15);
+        .setRestitution(0.15)
+        .setActiveEvents(physics.R.ActiveEvents.CONTACT_FORCE_EVENTS)
+        .setContactForceEventThreshold(tune.impact.eventThreshold);
       this.colliders.push(physics.createCollider(desc, this.body, this));
     }
     let explosive = 0;
