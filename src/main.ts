@@ -14,8 +14,11 @@ import { buildDerelict } from './game/level/derelict';
 import { Hud } from './ui/Hud';
 import { createDebugPanel } from './ui/DebugPanel';
 import { runAutotest } from './dev/autotest';
+import { applyTuneOverrides } from './dev/overrides';
 
 async function boot(): Promise<void> {
+  const overrides = applyTuneOverrides(location.search);
+  if (overrides.length) console.log('tune overrides', overrides.join(' '));
   const container = document.getElementById('app')!;
   let stage: Stage;
   try {

@@ -1,17 +1,21 @@
-// Grapple tether: hitscan hook that attaches to terrain or a pixel body, held by a Rapier rope
-// joint (max-distance constraint) so swinging, towing and flinging fall out of the solver.
-// Reeling recreates the joint with a new length. The hook lets go if the pixel it bit into
-// is destroyed or its body goes away.
+// Grapple tool: hitscan hook that bites into terrain or a pixel body, then hangs a physical
+// Rope (segmented, collides, wraps corners) between the hook and the ship. Swinging, towing
+// and flinging fall out of the solver. The hook lets go if the pixel it bit into is
+// destroyed or its body goes away.
 //
-// Likely growth: visual rope sag/segments, tension-based snapping, multiple tethers
-// (e.g. tie two objects together). Keep the joint lifecycle in attach()/detach().
+// The ship-side anchor is configurable (tune.grapple.pivot, P to toggle): at the center of
+// mass the tether never torques the ship, so aiming stays independent of the load; at the
+// nose, tension swings the ship's heading toward the load.
+//
+// Likely growth: hook travel time, multiple tethers, cutting/snapping the rope.
 
-import type RAPIER from '@dimforge/rapier2d-compat';
 import { CELL, tune } from '../config';
 import type { PixelBody } from '../pixel/PixelBody';
 import type { PixelObject } from '../pixel/PixelObject';
 import { ORDER } from '../render/order';
 import { Ribbon } from '../render/Ribbon';
+import { Rope } from './Rope';
+import { Ship } from './Ship';
 import type { GameContext, Tool } from './types';
 
 const nose = { x: 0, y: 0 };
@@ -22,20 +26,31 @@ export class Grapple implements Tool {
   private target: PixelObject | null = null;
   private anchorCellX = 0; // local cell coords (fractional) on the target
   private anchorCellY = 0;
-  private joint: RAPIER.ImpulseJoint | null = null;
-  private jointLength = 0;
+  private rope: Rope | null = null;
+  private pivotMode = tune.grapple.pivot;
   length = 0;
-  private readonly rope = new Ribbon(0xbfe8ff, ORDER.fx);
+  private readonly ribbons: Ribbon[] = [];
+  private readonly pts: { x: number; y: number }[] = [];
+  private readonly miss = new Ribbon(0x6f8fa8, ORDER.fx);
   private missTimer = 0;
   private missX = 0;
   private missY = 0;
 
   constructor(private readonly ctx: GameContext) {
-    ctx.fx.add(this.rope.mesh);
+    ctx.fx.add(this.miss.mesh);
   }
 
   get attached(): boolean {
     return this.target !== null;
+  }
+
+  /** Path length / rest length of the rope (0 when detached). */
+  get endRatio(): number {
+    return this.rope ? this.rope.endRatio() : 0;
+  }
+
+  get tautness(): number {
+    return this.rope ? this.rope.tautness() : 0;
   }
 
   get targetObject(): PixelObject | null {
@@ -48,6 +63,12 @@ export class Grapple implements Tool {
   }
 
   release(): void {}
+
+  private shipAnchor(): { x: number; y: number } {
+    if (tune.grapple.pivot === 'nose') return { ...Ship.NOSE };
+    const c = this.ctx.ship.body.localCom();
+    return { x: c.x, y: c.y };
+  }
 
   private fire(): void {
     const { ctx } = this;
@@ -74,30 +95,33 @@ export class Grapple implements Tool {
     hit.target.worldToLocal(px, py, tmp);
     this.anchorCellX = tmp.x;
     this.anchorCellY = tmp.y;
-    this.length = Math.max(tune.grapple.minLength, Math.min(max, Math.hypot(px - ctx.ship.x, py - ctx.ship.y)));
-    this.createJoint();
+    this.pivotMode = tune.grapple.pivot;
+    const anchor = this.shipAnchor();
+    const sb = ctx.ship.body;
+    const a = sb.rotation();
+    const t = sb.translation();
+    const ax = t.x + Math.cos(a) * anchor.x - Math.sin(a) * anchor.y;
+    const ay = t.y + Math.sin(a) * anchor.x + Math.cos(a) * anchor.y;
+    this.length = Math.max(tune.grapple.minLength, Math.min(max, Math.hypot(px - ax, py - ay)));
+    this.rope = new Rope(
+      ctx.physics,
+      { body: sb, local: anchor },
+      { body: this.targetBody(), local: { x: this.anchorCellX * CELL, y: this.anchorCellY * CELL } },
+      this.length,
+    );
     for (let k = 0; k < 6; k++) ctx.particles.spark(px, py, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, 0.2, 0.08, 0.3);
   }
 
-  private targetBody(): RAPIER.RigidBody {
+  private targetBody() {
     const t = this.target!;
     return t.kind === 'terrain' ? this.ctx.pixels.terrain.body : (t as PixelBody).body;
   }
 
-  private createJoint(): void {
-    const { world, R } = this.ctx.physics;
-    if (this.joint) world.removeImpulseJoint(this.joint, true);
-    const anchor = { x: this.anchorCellX * CELL, y: this.anchorCellY * CELL };
-    const params = R.JointData.rope(this.length, { x: 0, y: 0 }, anchor);
-    this.joint = world.createImpulseJoint(params, this.ctx.ship.body, this.targetBody(), true);
-    this.jointLength = this.length;
-  }
-
   detach(): void {
-    if (this.joint) this.ctx.physics.world.removeImpulseJoint(this.joint, true);
-    this.joint = null;
+    this.rope?.destroy();
+    this.rope = null;
     this.target = null;
-    this.rope.hide();
+    for (const r of this.ribbons) r.hide();
   }
 
   /** Must be called before a pixel body is removed from the physics world. */
@@ -107,44 +131,57 @@ export class Grapple implements Tool {
 
   fixedUpdate(dt: number): void {
     const t = this.target;
-    if (!t) return;
+    if (!t || !this.rope) return;
     const alive = t.kind === 'terrain' || (t as PixelBody).alive;
     if (!alive || !t.grid.solid(Math.floor(this.anchorCellX), Math.floor(this.anchorCellY)) || !this.ctx.ship.alive) {
       this.detach();
       return;
     }
+    if (this.pivotMode !== tune.grapple.pivot) {
+      this.pivotMode = tune.grapple.pivot;
+      this.rope.setShipAnchor(this.shipAnchor());
+    }
     const reel = this.ctx.controls.reel;
     if (reel !== 0) {
       const g = tune.grapple;
       this.length = Math.max(g.minLength, Math.min(g.maxLength, this.length + reel * g.reelSpeed * dt));
-      if (Math.abs(this.length - this.jointLength) > 0.02) this.createJoint();
+      this.rope.setLength(this.length);
     }
-  }
-
-  anchorWorld(out: { x: number; y: number }): { x: number; y: number } {
-    return this.target!.localToWorld(this.anchorCellX, this.anchorCellY, out);
   }
 
   frameUpdate(dt: number): void {
     const { ship } = this.ctx;
-    if (this.target) {
-      this.anchorWorld(tmp);
-      const dist = Math.hypot(tmp.x - ship.x, tmp.y - ship.y);
-      const taut = dist >= this.length - 0.08;
-      this.rope.set(ship.x, ship.y, tmp.x, tmp.y, taut ? 0.09 : 0.06, taut ? 0xdff4ff : 0x6f8fa8, taut ? 1 : 0.7);
-    } else if (this.missTimer > 0) {
-      this.missTimer -= dt;
-      this.rope.set(ship.x, ship.y, this.missX, this.missY, 0.04, 0x6f8fa8, 0.5);
-    } else {
-      this.rope.hide();
+    if (this.rope) {
+      const n = this.rope.points(this.pts);
+      const taut = this.rope.tautness() > 0.97;
+      const color = taut ? 0xdff4ff : 0x8fb4cc;
+      while (this.ribbons.length < n - 1) {
+        const r = new Ribbon(color, ORDER.fx);
+        this.ctx.fx.add(r.mesh);
+        this.ribbons.push(r);
+      }
+      for (let i = 0; i < this.ribbons.length; i++) {
+        if (i < n - 1) {
+          const a = this.pts[i];
+          const b = this.pts[i + 1];
+          // overlap ends slightly so joints don't show gaps
+          this.ribbons[i].set(a.x, a.y, b.x, b.y, taut ? 0.08 : 0.06, color, 1);
+        } else this.ribbons[i].hide();
+      }
     }
+    if (this.missTimer > 0) {
+      this.missTimer -= dt;
+      this.miss.set(ship.x, ship.y, this.missX, this.missY, 0.04, 0x6f8fa8, 0.5);
+    } else this.miss.hide();
   }
 
   status(): string {
-    return this.target ? `${this.length.toFixed(1)} m` : 'ready';
+    if (!this.rope) return `ready · pivot ${tune.grapple.pivot}`;
+    return `${this.length.toFixed(1)} m · pivot ${tune.grapple.pivot}`;
   }
 
   dispose(): void {
-    this.rope.dispose();
+    for (const r of this.ribbons) r.dispose();
+    this.miss.dispose();
   }
 }

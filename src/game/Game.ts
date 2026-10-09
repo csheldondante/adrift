@@ -145,6 +145,7 @@ export class Game {
     c.aimY = v2.y;
     if (input.hit('Mouse0')) this.slots[0].press();
     if (input.hit('Mouse2')) this.slots[1].press();
+    if (input.hit('KeyP')) tune.grapple.pivot = tune.grapple.pivot === 'com' ? 'nose' : 'com';
     const wheel = input.takeWheel();
     if (wheel) this.zoom = Math.max(16, Math.min(90, this.zoom * Math.pow(1.12, wheel)));
 

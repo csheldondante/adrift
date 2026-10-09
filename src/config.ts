@@ -20,10 +20,10 @@ export const tune = {
   ship: {
     thrust: 2600, // N
     reverseThrust: 1500, // N
-    torque: 900, // N·m
+    turnRate: 4.5, // rad/s max spin from A/D
+    turnAccel: 45, // rad/s² (spin-up and braking; torque scales with inertia)
     density: 160, // kg/m² (ship collider, ~300 kg)
-    rotationAssist: true, // damps spin when A/D released (testing aid, not linear braking)
-    rotationAssistStrength: 6,
+    rotationAssist: true, // brakes spin when A/D released (no linear braking)
     maxHealth: 100,
     impactDamageThreshold: 30000, // contact force (N) before hull damage starts (~1.7 m/s bump)
     impactDamageScale: 0.0002,
@@ -33,6 +33,13 @@ export const tune = {
     maxLength: 26, // m
     minLength: 1.5,
     reelSpeed: 7, // m/s
+    segmentLength: 0.5, // m per physical rope segment
+    segmentMass: 4, // kg per segment
+    segmentDamping: 0.4, // linear damping on segments only (kills endless zero-G wobble)
+    /** Where the rope attaches to the ship: center of mass (no torque) or nose (tension steers the ship). */
+    pivot: 'com' as 'com' | 'nose',
+    /** Hidden straight-line limit = length × this; stops heavy loads stretching the chain. */
+    safetySlack: 1.03,
   },
   cutter: {
     radius: 0.55, // m
@@ -60,6 +67,9 @@ export const tune = {
   pixel: {
     debrisMinCells: 10, // components smaller than this become particles
     detachCap: 24000, // flood-fill cap; larger floating regions stay static
+  },
+  physics: {
+    solverIterations: 8, // applied on restart; more = stiffer joints/rope, more CPU
   },
   debug: {
     showColliders: false,

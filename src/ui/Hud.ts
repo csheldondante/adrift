@@ -42,7 +42,7 @@ export class Hud {
       this.root,
       `<b>W/S</b> thrust · <b>A/D</b> rotate · <b>Mouse</b> aim<br>
        <b>LMB</b> cutter · <b>RMB</b> grapple / release · <b>Q/E</b> reel in/out<br>
-       <b>Wheel</b> zoom · <b>R</b> restart · <b>H</b> hide help · <b>\`</b> debug panel`,
+       <b>P</b> rope pivot COM/nose · <b>Wheel</b> zoom · <b>R</b> restart · <b>H</b> hide help · <b>\`</b> debug panel`,
     );
     this.markers = [
       { el: el('div', 'hud-marker salvage', this.root), label: 'CORE' },

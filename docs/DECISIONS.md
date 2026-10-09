@@ -2,6 +2,29 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-09 — Turning, rope physics, grapple pivot
+
+### Turning is a rate controller, not raw torque (user: "too floaty")
+A/D now drive angular velocity toward ±`turnRate` with bounded angular acceleration (`turnAccel`). Releasing A/D brakes to zero at the same rate. It still acts through torque impulses scaled by inertia, so impacts and loads can knock the ship around and it has to recover. Steering is central to aiming, so response is quick: about 90 ms to reach full spin rate and about 90 ms to stop. The old `torque` and `rotationAssistStrength` knobs are gone, because the right knobs are a rate and an acceleration.
+
+### Rope is a chain of physical segments (user asked for rope physics)
+- **Rejected: wrapping pivots (Worms-style ninja rope).** That breaks down when the rope wraps around moving bodies.
+- **Rejected: a CPU Verlet rope that applies forces at its ends.** It's a stiff spring between masses up to 1.5 t, which would be unstable.
+- **Chosen: Rapier segment chain.** Small balls linked by max-distance joints, colliding with world matter but not with the ship or each other. It wraps around anything and sags when slack.
+- **Stretch:** light segments between heavy bodies stretch under Rapier's iterative solver, and there is no joint-stiffness setting to fix it. Raising solver iterations (8 → 16) or segment mass (4 → 15 kg) barely helped; measured path stretch stayed about 15%. A hidden straight-line rope joint between the two ends (length × `safetySlack` = 1.03) carries the load whenever the rope is straight. It can't bind while the rope is wrapped, because the wrapped path is longer than the straight line. Measured stretch is now ≤ 3% at both pivots.
+- **Reeling** adds and removes segments at the ship end. The ship-end link carries the leftover fraction of the length, so length changes are smooth.
+
+### Grapple pivot at the center of mass by default; nose available for testing
+The user wanted the pivot at the center of mass so the tether doesn't rotate the ship, but asked to be able to test it. Press P to toggle, or use the tuning panel; the change applies live. Measured with rotation assist off, towing at 45° for 2 s:
+- **Center of mass:** max spin 0, heading change 0.
+- **Nose:** max spin 4.8 rad/s, heading change −1.6 rad.
+
+### Testing note
+An earlier rope test teleported the ship's rotation after the rope was attached. That jumps the nose anchor about 1.3 m in one frame and looked like 49% stretch. Never teleport anchored bodies in tests; set their pose before attaching.
+
+### URL tunable overrides
+`?group.key=value` (for example `?grapple.segmentMass=15`) overrides `tune` at boot, for parameter sweeps in smoke runs without code edits.
+
 ## 2026-10-08 — Initial build
 
 ### Direction (from the user)

@@ -3,13 +3,26 @@
 // class only centralizes lifecycle and lookup so removal never leaves dangling handles.
 
 import RAPIER from '@dimforge/rapier2d-compat';
+import { tune } from '../config';
 
 export type Body = RAPIER.RigidBody;
 export type Collider = RAPIER.Collider;
 
+/**
+ * Collision groups (Rapier InteractionGroups: membership << 16 | filter). Colliders that
+ * don't set groups are members of everything and collide with everything; only the
+ * exceptions are listed here.
+ */
+export const GROUP = { SHIP: 0x0004, ROPE: 0x0008 } as const;
+export const groups = (member: number, filter: number) => ((member & 0xffff) << 16) | (filter & 0xffff);
+/** Ship: collides with everything except its own tether. */
+export const SHIP_GROUPS = groups(GROUP.SHIP, 0xffff & ~GROUP.ROPE);
+/** Rope segments: collide with world matter only (not the ship, not each other). */
+export const ROPE_GROUPS = groups(GROUP.ROPE, 0xffff & ~(GROUP.ROPE | GROUP.SHIP));
+
 /** Anything that owns colliders. `kind` lets queries filter without instanceof chains. */
 export interface PhysOwner {
-  readonly kind: 'terrain' | 'pixelBody' | 'ship';
+  readonly kind: 'terrain' | 'pixelBody' | 'ship' | 'rope';
 }
 
 export interface ContactForce {
@@ -36,6 +49,8 @@ export class Physics {
     this.world = new RAPIER.World({ x: 0, y: 0 });
     this.world.timestep = dt;
     this.events = new RAPIER.EventQueue(true);
+    // extra iterations keep light rope segments from stretching under heavy loads
+    this.world.numSolverIterations = tune.physics.solverIterations;
   }
 
   createCollider(desc: RAPIER.ColliderDesc, body: Body, owner: PhysOwner): Collider {

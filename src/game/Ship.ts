@@ -6,7 +6,7 @@
 
 import * as THREE from 'three/webgpu';
 import { CELL, tune } from '../config';
-import type { Body, Collider, PhysOwner, Physics } from '../physics/Physics';
+import { SHIP_GROUPS, type Body, type Collider, type PhysOwner, type Physics } from '../physics/Physics';
 import { ORDER } from '../render/order';
 import type { Controls } from './types';
 
@@ -76,6 +76,7 @@ export class Ship implements PhysOwner {
       .setDensity(tune.ship.density)
       .setFriction(0.3)
       .setRestitution(0.2)
+      .setCollisionGroups(SHIP_GROUPS)
       .setActiveEvents(R.ActiveEvents.CONTACT_FORCE_EVENTS)
       .setContactForceEventThreshold(tune.ship.impactDamageThreshold);
     this.collider = physics.createCollider(desc, this.body, this);
@@ -124,12 +125,15 @@ export class Ship implements PhysOwner {
     const f = c.thrust > 0 ? c.thrust * s.thrust : c.thrust * s.reverseThrust;
     this.thrustLevel = c.thrust;
     if (f !== 0) this.body.applyImpulse({ x: Math.cos(a) * f * dt, y: Math.sin(a) * f * dt }, true);
-    let torque = c.turn * s.torque;
-    if (c.turn === 0 && s.rotationAssist) {
-      torque = -this.body.angvel() * this.body.principalInertia() * s.rotationAssistStrength;
-      torque = Math.max(-s.torque, Math.min(s.torque, torque));
+    // Turning is a rate controller with bounded angular acceleration: A/D drive spin toward
+    // ±turnRate, release brakes to zero (if assist is on). It still acts through torque, so
+    // impacts and off-center loads can knock the ship around and it has to recover.
+    const target = c.turn !== 0 ? c.turn * s.turnRate : s.rotationAssist ? 0 : null;
+    if (target !== null) {
+      const maxDw = s.turnAccel * dt;
+      const dw = Math.max(-maxDw, Math.min(maxDw, target - this.body.angvel()));
+      if (dw !== 0) this.body.applyTorqueImpulse(dw * this.body.principalInertia(), true);
     }
-    if (torque !== 0) this.body.applyTorqueImpulse(torque * dt, true);
   }
 
   damage(amount: number): void {

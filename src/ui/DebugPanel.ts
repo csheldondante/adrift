@@ -20,14 +20,19 @@ export function createDebugPanel(actions: DebugActions): GUI {
   const s = gui.addFolder('Ship');
   s.add(tune.ship, 'thrust', 0, 10000, 50);
   s.add(tune.ship, 'reverseThrust', 0, 10000, 50);
-  s.add(tune.ship, 'torque', 0, 4000, 10);
+  s.add(tune.ship, 'turnRate', 0.5, 12, 0.1).name('turn rate (rad/s)');
+  s.add(tune.ship, 'turnAccel', 2, 150, 1).name('turn accel (rad/s²)');
   s.add(tune.ship, 'density', 20, 600, 5).name('density (restart)');
   s.add(tune.ship, 'rotationAssist');
-  s.add(tune.ship, 'rotationAssistStrength', 0, 20, 0.1);
 
   const g = gui.addFolder('Grapple');
   g.add(tune.grapple, 'maxLength', 4, 60, 0.5);
   g.add(tune.grapple, 'reelSpeed', 0.5, 30, 0.5);
+  g.add(tune.grapple, 'pivot', ['com', 'nose']).name('ship pivot (P)').listen();
+  g.add(tune.grapple, 'segmentLength', 0.2, 2, 0.05).name('segment length (next grapple)');
+  g.add(tune.grapple, 'segmentMass', 0.5, 40, 0.5).name('segment mass (next grapple)');
+  g.add(tune.grapple, 'segmentDamping', 0, 5, 0.05).name('segment damping (next grapple)');
+  g.add(tune.grapple, 'safetySlack', 1, 2, 0.01).name('stretch limit');
 
   const c = gui.addFolder('Cutter');
   c.add(tune.cutter, 'radius', 0.15, 2.5, 0.05);

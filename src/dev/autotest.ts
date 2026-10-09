@@ -1,7 +1,7 @@
 // Scripted scenarios for headless smoke runs (?autotest=<mode>). They drive the real input
 // path and log measurable outcomes so regressions show up without eyeballing.
 
-import { CELL } from '../config';
+import { CELL, tune } from '../config';
 import type { Input } from '../core/Input';
 import type { Game } from '../game/Game';
 
@@ -37,7 +37,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
   const solidCount = () => game().pixels.terrain.grid.countSolid();
 
   await sleep(800);
-  const modes = mode === 'all' ? ['fly', 'cut', 'vent', 'boom', 'grapple'] : [mode];
+  const modes = mode === 'all' ? ['fly', 'turn', 'cut', 'vent', 'boom', 'grapple', 'rope'] : [mode];
   for (const md of modes) {
     restart();
     await sleep(300);
@@ -47,6 +47,74 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       await sleep(300);
       const v = game().ship.body.linvel();
       log('fly', { dx: +(game().ship.x - x0).toFixed(2), vx: +v.x.toFixed(2), vy: +v.y.toFixed(2) });
+    }
+    if (md === 'turn') {
+      // time to reach 95% of turn rate, then time to brake to (almost) zero after release
+      const b = game().ship.body;
+      input.simulateDown('KeyA');
+      const t0 = performance.now();
+      let tUp = -1;
+      while (performance.now() - t0 < 600) {
+        if (tUp < 0 && b.angvel() >= tune.ship.turnRate * 0.95) tUp = performance.now() - t0;
+        await sleep(5);
+      }
+      input.simulateUp('KeyA');
+      const t1 = performance.now();
+      let tDown = -1;
+      while (performance.now() - t1 < 1500) {
+        if (Math.abs(b.angvel()) < 0.1) {
+          tDown = performance.now() - t1;
+          break;
+        }
+        await sleep(5);
+      }
+      log('turn', { spinUpMs: Math.round(tUp), brakeMs: Math.round(tDown), rate: tune.ship.turnRate });
+    }
+    if (md === 'rope') {
+      // tow the core sideways with each pivot; raw torque shows with rotation assist off
+      const assist = tune.ship.rotationAssist;
+      for (const pivot of ['com', 'nose'] as const) {
+        restart();
+        await sleep(300);
+        tune.grapple.pivot = pivot;
+        tune.ship.rotationAssist = false;
+        const g = game();
+        const core = g.salvage.body;
+        core.setTranslation({ x: 25, y: 80 }, true); // open space: no walls to bump
+        core.setLinvel({ x: 0, y: 0 }, true);
+        core.setAngvel(0, true);
+        await sleep(50);
+        const c = core.worldCom();
+        // face up-right before firing so no teleport-rotation jerks the anchored rope
+        place(c.x + 7, c.y, Math.PI / 4);
+        await sleep(150);
+        aim(c.x, c.y);
+        input.simulateDown('Mouse2');
+        await sleep(40);
+        input.simulateUp('Mouse2');
+        await sleep(100);
+        const a0 = g.ship.angle;
+        let maxTaut = 0;
+        let maxSpin = 0;
+        let maxEnd = 0;
+        await hold('KeyW', 2000, () => {
+          maxTaut = Math.max(maxTaut, g.grapple.tautness);
+          maxEnd = Math.max(maxEnd, g.grapple.endRatio);
+          if (new URLSearchParams(location.search).has("trace") && Math.random() < 0.08) log("trace", pivot, +g.grapple.endRatio.toFixed(3), +g.ship.body.angvel().toFixed(2), +g.grapple.length.toFixed(2));
+          maxSpin = Math.max(maxSpin, Math.abs(g.ship.body.angvel()));
+        });
+        const c1 = g.salvage.body.worldCom();
+        log(`rope pivot=${pivot}`, {
+          attached: g.grapple.attached,
+          maxPath: +maxTaut.toFixed(3),
+          maxEnds: +maxEnd.toFixed(3),
+          maxSpin: +maxSpin.toFixed(2),
+          headingChange: +(g.ship.angle - a0).toFixed(2),
+          coreMoved: +Math.hypot(c1.x - c.x, c1.y - c.y).toFixed(2),
+        });
+      }
+      tune.ship.rotationAssist = assist;
+      tune.grapple.pivot = 'com';
     }
     if (md === 'cut') {
       // slice the hold roof at two x positions (from above) so the section between detaches
