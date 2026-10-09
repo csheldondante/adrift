@@ -54,8 +54,15 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       const g = game();
       g.zoom = Number(new URLSearchParams(location.search).get('zoom') ?? 300);
       g.debugCamera = (window as unknown as { __level: { center: { x: number; y: number } } }).__level.center;
+      const focus = new URLSearchParams(location.search).get('focus');
+      if (focus) {
+        const mc = g.machinery.machines.find((x) => (focus === 'crusher' ? x.shaft : !x.shaft));
+        if (mc) g.debugCamera = mc.center(0);
+      }
       await sleep(800);
       await shot('overview');
+      await sleep(700);
+      await shot('overview2');
     }
     if (md === 'soak') {
       for (let i = 0; i < 8; i++) {
@@ -272,6 +279,58 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       let after = 0;
       for (let y = 570; y < 590; y++) for (let x = 498; x < 506; x++) after = Math.max(after, grid.heat[y * grid.w + x]);
       log('glow', { frameCellsBefore: before, frameCellsAfter: frameCells(), maxHeat: +maxHeat.toFixed(2), heatAfter2_5s: +after.toFixed(2) });
+    }
+    if (md === 'crush') {
+      // park the ship where a crusher's ram ends up; it should die by crushing within a cycle
+      const g = game();
+      const mc = g.machinery.machines.find((x) => x.shaft);
+      if (!mc) {
+        log('crush', { error: 'no crusher in level' });
+        continue;
+      }
+      let far = mc.center(0);
+      let farD = 0;
+      const c0 = mc.center(0);
+      for (let t = 0; t < 4; t += 0.05) {
+        const c = mc.center(t);
+        const d = Math.hypot(c.x - c0.x, c.y - c0.y);
+        if (d > farD) [far, farD] = [c, d];
+      }
+      // wait for the ram to be retracted, park the ship once at the end of its stroke, hands off
+      while (Math.hypot(mc.center(g.machinery.time).x - c0.x, mc.center(g.machinery.time).y - c0.y) > 0.3) await sleep(10);
+      place(far.x, far.y, 0);
+      const t0 = performance.now();
+      while (performance.now() - t0 < 6000 && g.ship.alive) await sleep(16);
+      log('crush', { dead: !g.ship.alive, cause: g.ship.deathCause, ms: Math.round(performance.now() - t0) });
+    }
+    if (md === 'ride') {
+      // harpoon a mover, winch in until clamped, and check the ship travels with it
+      const g = game();
+      const mc = g.machinery.machines.find((x) => !x.shaft);
+      if (!mc) {
+        log('ride', { error: 'no mover in level' });
+        continue;
+      }
+      const b = mc.body.body.translation();
+      const gw = mc.body.grid.w * CELL;
+      const gh = mc.body.grid.h * CELL;
+      place(b.x + gw / 2, b.y + gh + 5, -Math.PI / 2);
+      await sleep(50);
+      aim(b.x + gw / 2, b.y + gh / 2);
+      input.simulateDown('Mouse2');
+      const t0 = performance.now();
+      while (performance.now() - t0 < 5000 && g.grapple.state !== 'clamped') await sleep(16);
+      input.simulateUp('Mouse2');
+      const s0 = { x: g.ship.x, y: g.ship.y };
+      const m0 = mc.body.body.translation();
+      await sleep(1500);
+      const m1 = mc.body.body.translation();
+      log('ride', {
+        state: g.grapple.state,
+        shipMoved: +Math.hypot(g.ship.x - s0.x, g.ship.y - s0.y).toFixed(2),
+        moverMoved: +Math.hypot(m1.x - m0.x, m1.y - m0.y).toFixed(2),
+        health: Math.round(g.ship.health),
+      });
     }
     if (md === 'brake') {
       const g = game();

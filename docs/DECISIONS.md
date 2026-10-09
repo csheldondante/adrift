@@ -2,6 +2,14 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-09 — Machinery: crushers and rideable movers
+
+- **Machines are kinematic pixel bodies** made of new indestructible materials: PISTON steel and hazard STRIPE. They shove anything in the way, glow under the cutter but never cut, and report their velocity. So friction carries loose cargo, and a clamp (fixed joint) rides along: tested, the ship traveled exactly with the mover (8.64 m vs 8.64 m).
+- **Crushers** slam on a cycle: rest 45%, ease-in slam 8%, hold 15%, linear retract 32%, with a random phase per crusher. A visual shaft runs from the wall housing to the ram.
+- **Movers** shuttle along a 2-point path with eased ends and 1.5 s pauses.
+- **Crushing = a contact force from a machine above 400 kN on the ship:** instant death, with the "CRUSHED" banner. A glancing knock is still ordinary impact damage. Pinned against a wall, the force is far above the threshold. Tested by parking the ship at the end of a ram's stroke while it's retracted; it was crushed within one cycle.
+- **The ship records `deathCause`** for the banner and for tests.
+
 ## 2026-10-09 — Generated dungeon derelict (hybrid generator) + minimap
 
 User choices: a hybrid generator, about 4× size, deep core extraction as the goal, and every alarm response (implemented in later phases).

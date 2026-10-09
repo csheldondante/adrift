@@ -13,6 +13,8 @@ import type { Body, Collider, Physics } from '../physics/Physics';
 
 export interface BodyTags {
   salvage?: boolean;
+  /** Scripted machine (crusher, mover): kinematic, driven by the Machinery system. */
+  machine?: boolean;
   label?: string;
 }
 
@@ -24,6 +26,8 @@ export interface BodyInit {
   vy?: number;
   w?: number; // angular velocity
   tags?: BodyTags;
+  /** Position-driven by script (machines); unaffected by forces, pushes everything. */
+  kinematic?: boolean;
 }
 
 export class PixelBody extends PixelObject {
@@ -44,7 +48,7 @@ export class PixelBody extends PixelObject {
   ) {
     super(grid, renderOrder);
     const R = physics.R;
-    const desc = R.RigidBodyDesc.dynamic()
+    const desc = (init.kinematic ? R.RigidBodyDesc.kinematicPositionBased() : R.RigidBodyDesc.dynamic())
       .setTranslation(init.x, init.y)
       .setRotation(init.angle ?? 0)
       .setLinvel(init.vx ?? 0, init.vy ?? 0)

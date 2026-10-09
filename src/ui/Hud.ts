@@ -82,7 +82,7 @@ export class Hud {
     this.tools.innerHTML = game.slots.map((s, i) => `<div><b>${i === 0 ? 'LMB' : 'RMB'}</b> ${s.name} <span>${s.status()}</span></div>`).join('');
 
     if (obj.state === 'complete') this.showBanner('SALVAGE EXTRACTED', `${obj.completedAt.toFixed(1)} s — press R to run it again`, 'win');
-    else if (!game.ship.alive) this.showBanner('SHIP DESTROYED', 'press R to restart', 'lose');
+    else if (!game.ship.alive) this.showBanner(game.ship.deathCause === 'crushed' ? 'CRUSHED' : 'SHIP DESTROYED', 'press R to restart', 'lose');
     else if (obj.state === 'lost') this.showBanner('CORE LOST', 'press R to restart', 'lose');
     else this.banner.style.display = 'none';
 

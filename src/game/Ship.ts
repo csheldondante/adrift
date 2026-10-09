@@ -156,10 +156,16 @@ export class Ship implements PhysOwner {
     }
   }
 
-  damage(amount: number): void {
+  /** What finished the ship off (for the death banner and tests). */
+  deathCause = '';
+
+  damage(amount: number, cause = 'damage'): void {
     if (!this.alive) return;
     this.health = Math.max(0, this.health - amount);
-    if (this.health <= 0) this.alive = false;
+    if (this.health <= 0) {
+      this.alive = false;
+      this.deathCause = cause;
+    }
   }
 
   sync(time: number): void {

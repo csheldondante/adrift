@@ -24,6 +24,7 @@ import { Grapple } from './Grapple';
 import { Hazards } from './Hazards';
 import type { LevelSpec } from './level/types';
 import { ExtractionObjective } from './Objective';
+import { Machinery } from './Machinery';
 import { Ship } from './Ship';
 import type { Controls, GameContext, Tool } from './types';
 
@@ -43,6 +44,7 @@ export class Game {
   readonly particles = new Particles();
   readonly hazards = new Hazards();
   readonly objective: ExtractionObjective;
+  readonly machinery: Machinery;
   readonly cutter: Cutter;
   readonly grapple: Grapple;
   readonly controls: Controls = { thrust: 0, turn: 0, reel: 0, aimX: 0, aimY: 0 };
@@ -89,6 +91,7 @@ export class Game {
     this.camY = s.y;
 
     this.objective = new ExtractionObjective(level.extraction, salvage);
+    this.machinery = new Machinery(this.pixels, this.fx, level.entities);
 
     this.backWall = level.backdrop ? new PixelLayer(level.backdrop, ORDER.backWall, [0.3, 0.33, 0.42]) : null;
     if (this.backWall) this.root.add(this.backWall.object);
@@ -170,6 +173,7 @@ export class Game {
     this.pixels.syncVisuals();
     this.ship.sync(this.time);
     for (const t of this.slots) t.frameUpdate(dt);
+    this.machinery.frameUpdate();
     this.engineFx();
     this.particles.update(dt, field, this.pixels.terrain.grid);
     this.objective.update(dt);
@@ -185,6 +189,7 @@ export class Game {
     this.slots[1].fixedUpdate(dt, input.down('Mouse2'));
     this.hazards.update(dt);
     this.pixels.flush();
+    this.machinery.fixedUpdate(dt);
     this.applyFieldForces(dt);
     this.cullFarBodies();
     this.physics.step();
@@ -232,6 +237,12 @@ export class Game {
         // deliberately pulling into / clamped onto the tethered object isn't a crash
         const other = cf.a === this.ship ? cf.b : cf.a;
         if (other && other === this.grapple.targetObject) continue;
+        // pinned by a machine: instant death (a glancing knock is just normal impact damage)
+        if (other?.kind === 'pixelBody' && (other as PixelBody).tags.machine && cf.force > s.crushForce) {
+          this.ship.damage(Infinity, 'crushed');
+          this.app.stage.shake(1);
+          continue;
+        }
         if (cf.force > s.impactDamageThreshold) {
           this.ship.damage((cf.force - s.impactDamageThreshold) * s.impactDamageScale);
           this.app.stage.shake(Math.min(0.4, cf.force / 400000));
@@ -357,6 +368,7 @@ export class Game {
 
   dispose(): void {
     for (const t of this.slots) t.dispose();
+    this.machinery.dispose();
     this.objective.dispose();
     this.backWall?.dispose();
     this.pixels.dispose();

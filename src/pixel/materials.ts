@@ -12,6 +12,8 @@ export const M = {
   GLASS: 6, // windows, brittle
   SCRAP: 7, // loose junk
   LIGHT: 8, // emissive fixture (cosmetic), soft
+  PISTON: 9, // machine steel: indestructible
+  STRIPE: 10, // machine hazard striping: indestructible
 } as const;
 export type MaterialId = (typeof M)[keyof typeof M];
 
@@ -43,6 +45,8 @@ const DEFS: MaterialDef[] = [
   { id: M.GLASS, name: 'glass', color: [120, 190, 230], variation: 0.06, hp: 12, armor: 1, density: 25, flags: F.SOLID },
   { id: M.SCRAP, name: 'scrap', color: [128, 110, 92], variation: 0.2, hp: 40, armor: 1, density: 45, flags: F.SOLID },
   { id: M.LIGHT, name: 'light', color: [255, 214, 140], variation: 0.05, hp: 20, armor: 1, density: 30, flags: F.SOLID | F.EMISSIVE },
+  { id: M.PISTON, name: 'piston', color: [138, 142, 152], variation: 0.06, hp: 1, armor: 0, density: 200, flags: F.SOLID },
+  { id: M.STRIPE, name: 'stripe', color: [214, 172, 40], variation: 0.05, hp: 1, armor: 0, density: 200, flags: F.SOLID },
 ];
 
 export const MAT_FLAGS = new Uint8Array(256);

@@ -30,6 +30,7 @@ export const tune = {
     impactDamageThreshold: 30000, // contact force (N) before hull damage starts (~1.7 m/s bump)
     impactDamageScale: 0.0002,
     heatDamage: 25, // hp/s at heat 1
+    crushForce: 400000, // N contact force from a machine that counts as being crushed (instant death)
   },
   grapple: {
     maxLength: 26, // m harpoon range / rope on the spool
