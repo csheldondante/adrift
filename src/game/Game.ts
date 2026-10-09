@@ -67,6 +67,9 @@ export class Game {
   private camX: number;
   private camY: number;
   private deathHandled = false;
+  private readonly preVel = { x: 0, y: 0 };
+  /** Ship velocity change in its last contact step (m/s), for tests and tuning. */
+  lastImpactSpeed = 0;
   private debugLines: THREE.LineSegments | null = null;
   private readonly backWall: PixelLayer | null;
 
@@ -202,6 +205,9 @@ export class Game {
     this.projectiles.step(dt);
     this.applyFieldForces(dt);
     this.cullFarBodies();
+    const pv = this.ship.body.linvel();
+    this.preVel.x = pv.x;
+    this.preVel.y = pv.y;
     this.physics.step();
     this.pixels.syncTransforms();
     this.applyDamage(dt);
@@ -242,20 +248,20 @@ export class Game {
   private applyDamage(dt: number): void {
     const s = tune.ship;
     const imp = tune.impact;
+    let shipTouched = false;
     for (const cf of this.physics.contactForces) {
       if (cf.a === this.ship || cf.b === this.ship) {
-        // deliberately pulling into / clamped onto the tethered object isn't a crash
         const other = cf.a === this.ship ? cf.b : cf.a;
-        if (other && other === this.grapple.targetObject) continue;
+        // held debris is a cushion ("the ship's arms"): touching it never counts as a crash, and
+        // if only it takes the hit, the jolt through the tether/clamp doesn't either. Terrain
+        // you're anchored to gets no such pass.
+        const held = this.grapple.heldBody;
+        if (other?.kind !== 'rope' && !(held && other === held)) shipTouched = true;
         // pinned by a machine: instant death (a glancing knock is just normal impact damage)
         if (other?.kind === 'pixelBody' && (other as PixelBody).tags.machine && cf.force > s.crushForce) {
           this.ship.damage(Infinity, 'crushed');
           this.app.stage.shake(1);
           continue;
-        }
-        if (cf.force > s.impactDamageThreshold) {
-          this.ship.damage((cf.force - s.impactDamageThreshold) * s.impactDamageScale, 'impact');
-          this.app.stage.shake(Math.min(0.4, cf.force / 400000));
         }
         continue;
       }
@@ -278,6 +284,18 @@ export class Game {
         for (let k = 0; k < 6; k++) this.particles.spark(p.x, p.y, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, 0.25, 0.08, 0.3);
         const d = Math.hypot(p.x - this.ship.x, p.y - this.ship.y);
         this.app.stage.shake(Math.min(0.3, j / 20000) * Math.max(0, 1 - d / 40));
+      }
+    }
+    // Crash damage comes from the physics, with no special cases: the ship's velocity change
+    // over a step in which it touched something is the impact speed. Gentle contact (slow
+    // winch docking, nudging crates) stays under the safe speed; slamming into anything hurts.
+    if (shipTouched && this.ship.alive) {
+      const v = this.ship.body.linvel();
+      const dv = Math.hypot(v.x - this.preVel.x, v.y - this.preVel.y);
+      this.lastImpactSpeed = dv;
+      if (dv > s.safeImpactSpeed) {
+        this.ship.damage((dv - s.safeImpactSpeed) * s.impactDamagePerSpeed, 'impact');
+        this.app.stage.shake(Math.min(0.5, dv / 25));
       }
     }
     if (this.ship.alive) {

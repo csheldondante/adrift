@@ -1,13 +1,17 @@
-// A translucent vision-cone fan, clipped against matter by per-ray distances supplied by the
-// caller (so walls and crates visibly block sight). Color shows the watcher's mood.
+// A vision-cone fan with bright edge lines, clipped against matter by per-ray distances
+// supplied by the caller (so walls and crates visibly block sight). Color shows the watcher's
+// mood. The fill is faint; the edges are what make a sweeping cone readable at a glance.
 
 import * as THREE from 'three/webgpu';
 import { ORDER } from './order';
+import { Ribbon } from './Ribbon';
 
 export class VisionCone {
-  readonly mesh: THREE.Mesh;
+  readonly mesh: THREE.Group;
+  private readonly fill: THREE.Mesh;
   private readonly pos: Float32Array;
   private readonly mat: THREE.MeshBasicMaterial;
+  private readonly edges = [new Ribbon(0xffd27a, ORDER.particles, true), new Ribbon(0xffd27a, ORDER.particles, true)];
 
   constructor(readonly rays: number) {
     // center + rays+1 rim vertices, rays triangles
@@ -19,9 +23,11 @@ export class VisionCone {
     geo.setIndex(idx);
     this.mat = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.12, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
     this.mat.blending = THREE.AdditiveBlending;
-    this.mesh = new THREE.Mesh(geo, this.mat);
-    this.mesh.renderOrder = ORDER.particles - 1;
-    this.mesh.frustumCulled = false;
+    this.fill = new THREE.Mesh(geo, this.mat);
+    this.fill.renderOrder = ORDER.particles - 1;
+    this.fill.frustumCulled = false;
+    this.mesh = new THREE.Group();
+    this.mesh.add(this.fill, this.edges[0].mesh, this.edges[1].mesh);
   }
 
   /** Rebuilds the fan: origin, facing angle, half-angle, and the clipped length of each ray. */
@@ -37,9 +43,12 @@ export class VisionCone {
       p[(i + 1) * 3 + 1] = y + Math.sin(a) * l;
       p[(i + 1) * 3 + 2] = 0;
     }
-    (this.mesh.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    (this.fill.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     this.mat.color.setHex(color);
     this.mat.opacity = opacity;
+    const edgeOpacity = Math.min(1, opacity * 3.5);
+    this.edges[0].set(x, y, p[3], p[4], 0.07, color, edgeOpacity);
+    this.edges[1].set(x, y, p[(this.rays + 1) * 3], p[(this.rays + 1) * 3 + 1], 0.07, color, edgeOpacity);
     this.mesh.visible = true;
   }
 
@@ -48,8 +57,9 @@ export class VisionCone {
   }
 
   dispose(): void {
-    this.mesh.geometry.dispose();
+    this.fill.geometry.dispose();
     this.mat.dispose();
+    for (const e of this.edges) e.dispose();
     this.mesh.removeFromParent();
   }
 }

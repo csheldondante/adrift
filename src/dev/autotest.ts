@@ -47,7 +47,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
   };
 
   await sleep(800);
-  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope'] : [mode];
+  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope'] : [mode];
   for (const md of modes) {
     restart();
     await sleep(300);
@@ -236,7 +236,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       if (!crate.alive) { log('clamp', { error: 'crate destroyed', health: Math.round(g.ship.health) }); continue; }
       const gap1 = Math.hypot(crate.body.worldCom().x - g.ship.x, crate.body.worldCom().y - g.ship.y);
       const v = g.ship.body.linvel();
-      log('clamp', { state: g.grapple.state, clampMs: Math.round(tClamp), gapBefore: +gap0.toFixed(2), gapAfterThrust: +gap1.toFixed(2), speed: +Math.hypot(v.x, v.y).toFixed(2) });
+      log('clamp', { health: Math.round(g.ship.health), state: g.grapple.state, clampMs: Math.round(tClamp), gapBefore: +gap0.toFixed(2), gapAfterThrust: +gap1.toFixed(2), speed: +Math.hypot(v.x, v.y).toFixed(2) });
       input.simulateDown('Mouse2');
       await sleep(40);
       input.simulateUp('Mouse2');
@@ -408,6 +408,89 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       shot('drones');
       const drones = g.security.robots.filter((r) => r.pb.tags.label === 'drone' && r.alive).length;
       log('drones', { launched: b.launched, alive: drones, hpLost: Math.round(h0 - g.ship.health), cause: g.ship.deathCause });
+    }
+    if (md === 'crash') {
+      // classic level: fly into the prow's hull at different speeds
+      const g = game();
+      const results: Record<string, unknown> = {};
+      for (const speed of [2, 6, 12]) {
+        restart();
+        await sleep(200);
+        const gg = game();
+        place(m(200), m(380), 0);
+        gg.ship.body.setLinvel({ x: speed, y: 0 }, true);
+        await sleep(Math.max(1200, (6 / speed) * 1000 + 600));
+        results[`${speed}mps`] = { hp: Math.round(gg.ship.health), impact: +gg.lastImpactSpeed.toFixed(1) };
+      }
+      log('crash', results);
+      // tethered slam: harpoon a crate in open space, then ram it at speed (no exemption)
+      restart();
+      await sleep(200);
+      const g2 = game();
+      const crate = g2.pixels.bodies.find((b) => !b.explosiveCells && !b.tags.salvage && b.body.mass() > 100)!;
+      crate.body.setTranslation({ x: 20, y: 80 }, true);
+      crate.body.setLinvel({ x: 0, y: 0 }, true);
+      place(34, 81, Math.PI);
+      await sleep(100);
+      aim(crate.body.worldCom().x, crate.body.worldCom().y);
+      input.simulateDown('Mouse2');
+      await sleep(30);
+      input.simulateUp('Mouse2');
+      await sleep(700);
+      const attached = g2.grapple.attached;
+      const cc = crate.body.worldCom();
+      log('pre-slam', { ship: [+g2.ship.x.toFixed(1), +g2.ship.y.toFixed(1)], crate: [+cc.x.toFixed(1), +cc.y.toFixed(1)], hp: Math.round(g2.ship.health) });
+      let maxImpact = 0;
+      const tw = setInterval(() => (maxImpact = Math.max(maxImpact, game().lastImpactSpeed)), 10);
+      g2.ship.body.setLinvel({ x: -14, y: 0 }, true);
+      await sleep(1500);
+      clearInterval(tw);
+      log('tethered slam', { attached, hp: Math.round(g2.ship.health), cause: g2.ship.deathCause, maxImpact: +maxImpact.toFixed(1) });
+      // shield: clamp a crate on the nose, then ram the prow with the crate leading
+      restart();
+      await sleep(200);
+      const g3 = game();
+      const shield = g3.pixels.bodies.find((b) => !b.explosiveCells && !b.tags.salvage && b.body.mass() > 100)!;
+      shield.body.setTranslation({ x: m(150), y: m(378) }, true);
+      shield.body.setLinvel({ x: 0, y: 0 }, true);
+      shield.body.setAngvel(0, true);
+      place(m(150) - 8, m(380), 0);
+      await sleep(100);
+      aim(shield.body.worldCom().x, shield.body.worldCom().y);
+      input.simulateDown('Mouse2');
+      const ts = performance.now();
+      while (performance.now() - ts < 5000 && g3.grapple.state !== 'clamped') await sleep(16);
+      input.simulateUp('Mouse2');
+      const clamped = g3.grapple.state;
+      const hpBefore = g3.ship.health;
+      g3.ship.body.setLinvel({ x: 12, y: 0 }, true);
+      shield.body.setLinvel({ x: 12, y: 0 }, true);
+      await sleep(2000);
+      shot('shield');
+      log('shield ram', { clamped, hpBefore: Math.round(hpBefore), hpAfter: Math.round(g3.ship.health), cause: g3.ship.deathCause });
+      void g;
+    }
+    if (md === 'sentry') {
+      // stand in a turret's sweep with no alarm: it should spot, raise the alarm and fire
+      const g = game();
+      const t = g.security.turrets[0];
+      if (!t) {
+        log('sentry', { error: 'no turrets' });
+        continue;
+      }
+      const h0 = g.ship.health;
+      const t0 = performance.now();
+      let tAlarm = -1;
+      while (performance.now() - t0 < 9000 && g.ship.alive) {
+        place(t.x + Math.cos(t.dir) * 10, t.y + Math.sin(t.dir) * 10, 0);
+        if (tAlarm < 0 && g.security.alert) {
+          tAlarm = performance.now() - t0;
+          shot('sentry-alarm');
+        }
+        if (tAlarm > 0 && performance.now() - t0 > tAlarm + 2500) break;
+        await sleep(16);
+      }
+      log('sentry', { alarmMs: Math.round(tAlarm), hpLost: Math.round(h0 - g.ship.health), cause: g.ship.deathCause });
     }
     if (md === 'brake') {
       const g = game();

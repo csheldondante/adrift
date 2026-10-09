@@ -2,6 +2,17 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-09 — Crash damage from physics; held debris is a cushion; visible sentries
+
+**User feedback:** "When grappling, if I hold reel in I avoid damage even if I link into something else … the winch speed [should be] slow and safe, but we still base damage on the physics speed." Then: "I do want the grappled item to not cause damage and to work as a shield. That is fun even if it isn't realistic … imagine the ship has arms to hold the debris close and use it as a cushion." And: "The turret doesn't seem to shoot and I don't see any sweeping vision cones."
+
+- **Ship crash damage = the ship's velocity change in a physics step in which it touched something.** The old rule (contact force above 30 kN) was replaced. That's the impact speed the user means by "physics speed". Up to 3.5 m/s is free, then 6 hp per m/s: 6 m/s costs 9 hp, 12 m/s costs 57, and about 20 m/s is fatal. Gentle pushing (thrusting into a crate, riding a mover) never registers. Machine crushing stays force-based and instant.
+- **Held debris is a cushion and shield.** Contact with the loose pixel body you're tethered or clamped to doesn't count as touching. So the ship isn't hurt by it, and when only the held body hits something (the clamped crate rams a wall) the jolt through the clamp doesn't count either. Tested: a clamped crate ramming the hull at 12 m/s left the ship at 100 hp. Terrain you're anchored to gets no pass; that was the "hack" the user objected to.
+- **The winch is slow (4 m/s), easing toward ~1 m/s** as the line shortens, so docking is safe by physics rather than by exemption.
+- **Turrets are sentries now.** Idle, they sweep a narrow scanning cone (±0.22 rad, 30 m) across their arc. Holding you in it builds suspicion fast (about 0.6 s), and they raise the alarm themselves. Previously they slept until a bot raised the alarm, so a player who never got spotted by a bot never saw one fire.
+- **Cones are readable:** bright edge lines with a faint fill. The patrol fill had been 8% additive and was effectively invisible, while the alarm fill, at its first fix, covered the play area.
+- **Patrol bots** are added to about 45% of ordinary rooms past depth 2. With only 4 security rooms out of 30+, a run could miss them all.
+
 ## 2026-10-09 — Security: vision-cone bots, alarm, bulkheads, turrets, drones
 
 The user asked for security bots with vision cones you can evade, and every alarm response.

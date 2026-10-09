@@ -68,10 +68,11 @@ export class Security {
     this.nav = new NavField(ctx.pixels.terrain.grid);
   }
 
-  /** Highest suspicion among bots (for the HUD's "being watched" meter). */
+  /** Highest suspicion among bots and sentry turrets (for the HUD's "being watched" meter). */
   get suspicion(): number {
     let s = 0;
     for (const r of this.robots) if (r instanceof SecurityBot && r.alive && r.state !== 'hunt') s = Math.max(s, r.suspicion);
+    for (const t of this.turrets) if (t.alive) s = Math.max(s, t.suspicion);
     return s;
   }
 

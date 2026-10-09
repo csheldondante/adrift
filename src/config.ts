@@ -27,8 +27,9 @@ export const tune = {
     flightAssist: true, // RCS jets brake drift when not thrusting (visible as side puffs)
     brakeForce: 700, // N of braking from the RCS jets (≈2.3 m/s² unloaded)
     maxHealth: 100,
-    impactDamageThreshold: 30000, // contact force (N) before hull damage starts (~1.7 m/s bump)
-    impactDamageScale: 0.0002,
+    contactEventThreshold: 1500, // N: contact force at which the ship registers that it touched something
+    safeImpactSpeed: 3.5, // m/s velocity change in one contact step that the hull shrugs off
+    impactDamagePerSpeed: 6, // hp per m/s above the safe speed (12 m/s crash ≈ 50 hp, ~20 m/s is fatal)
     heatDamage: 25, // hp/s at heat 1
     crushForce: 400000, // N contact force from a machine that counts as being crushed (instant death)
   },
@@ -48,7 +49,7 @@ export const tune = {
     recoil: 100, // N·s kick on the ship when firing
     biteSlack: 1.15, // rope length at impact = distance × this (visible slack bow)
     tightenSpeed: 12, // m/s winch that snaps the slack taut after impact
-    winchSpeed: 9, // m/s winch while RMB is held
+    winchSpeed: 4, // m/s winch while RMB is held (slow enough that docking is under the safe impact speed)
     holdToWinch: 0.18, // s: RMB held longer than this winches; a shorter click releases
     retractSpeed: 60, // m/s head returning after a miss
     snugTension: 400, // N sustained pretension at which the fast winch hands over to take-up

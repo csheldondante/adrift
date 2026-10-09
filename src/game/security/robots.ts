@@ -217,7 +217,7 @@ export class SecurityBot extends Robot {
     }
     const hunting = this.state === 'hunt';
     const color = hunting ? 0xff3b30 : this.suspicion > 0.05 ? 0xff9a3a : 0xffd27a;
-    const opacity = hunting ? 0.16 : 0.08 + this.suspicion * 0.12;
+    const opacity = hunting ? 0.12 : 0.1 + this.suspicion * 0.1;
     this.cone.set(eye.x, eye.y, look, SecurityBot.HALF, this.lengths, color, opacity);
   }
 

@@ -17,7 +17,7 @@ import { M } from '../../pixel/materials';
 import { PixelGrid } from '../../pixel/PixelGrid';
 import { Painter } from './Painter';
 import { Rng } from './rng';
-import { ROOM_KINDS, SEALED_KINDS, type CellRect, type RoomCtx, type RoomKind } from './rooms';
+import { addPatrolBot, ROOM_KINDS, SEALED_KINDS, type CellRect, type RoomCtx, type RoomKind } from './rooms';
 import type { BodySpec, DoorSpec, EntitySpec, LevelSpec, RoomInfo } from './types';
 
 const S = 256; // slot size, cells (32 m)
@@ -29,6 +29,7 @@ const CORRIDOR = 48; // corridor width, cells (6 m)
 const LINING = 6; // hull plating lining rooms and corridors
 const HULL_SKIN = 24; // outer hull thickness
 const m = (c: number) => c * CELL;
+const PATROLLED: ReadonlySet<RoomKind> = new Set(['cargo', 'machinery', 'fuel', 'crew', 'moverHall', 'droneBay', 'vault'] as RoomKind[]);
 
 interface Room {
   id: number;
@@ -312,6 +313,8 @@ export function buildDungeon(seed = (Math.random() * 2 ** 31) >>> 0): LevelSpec 
       setCore: (i) => (salvageIndex = i),
     };
     ROOM_KINDS[room.kind](ctx);
+    // roaming security beyond the first rooms, so stealth matters throughout the ship
+    if (room.depth >= 2 && PATROLLED.has(room.kind) && rng.chance(0.45)) addPatrolBot(ctx);
   }
   // sealed rooms: plug their doorways after templates so the air stays in
   for (const { rect } of plugs) p.rect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0, M.PLATE);

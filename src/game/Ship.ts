@@ -83,7 +83,7 @@ export class Ship implements PhysOwner {
       .setRestitution(0.2)
       .setCollisionGroups(SHIP_GROUPS)
       .setActiveEvents(R.ActiveEvents.CONTACT_FORCE_EVENTS)
-      .setContactForceEventThreshold(tune.ship.impactDamageThreshold);
+      .setContactForceEventThreshold(tune.ship.contactEventThreshold);
     this.collider = physics.createCollider(desc, this.body, this);
 
     const w = SPRITE[0].length * CELL;

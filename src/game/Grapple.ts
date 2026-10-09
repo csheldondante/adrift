@@ -112,6 +112,12 @@ export class Grapple implements Tool {
   get snug(): boolean {
     return this.state === 'attached' && !this.tightening;
   }
+  /** A loose pixel body the ship is tethered or clamped to (the cushion/shield), if any. */
+  get heldBody(): PixelBody | null {
+    const t = this.target;
+    return (this.state === 'attached' || this.state === 'clamped') && t?.kind === 'pixelBody' ? (t as PixelBody) : null;
+  }
+
   get targetObject(): PixelObject | null {
     return this.target;
   }
@@ -341,8 +347,9 @@ export class Grapple implements Tool {
       // RMB held: winch in hard — pull yourself to the anchor, or the object to you
       rope.chordDamping = 0;
       this.tightening = false;
-      // ease off over the last few meters so docking onto the target is a bump, not a crash
-      const speed = Math.min(g.winchSpeed, Math.max(1.5, (rope.length - g.minLength) * 2.5));
+      // ease off over the last few meters: docking arrives at ~1 m/s, well under the safe
+      // impact speed (it is still real physics: hit something else on the way and it hurts)
+      const speed = Math.min(g.winchSpeed, Math.max(1.0, (rope.length - g.minLength) * 1.2));
       rope.setLength(Math.max(g.minLength, rope.length - speed * dt));
     }
     // touching what we're tethered to while winching (or fully reeled in): clamp on

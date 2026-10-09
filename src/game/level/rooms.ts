@@ -161,7 +161,8 @@ export function droneBay(c: RoomCtx): void {
   ceilingLights(c);
 }
 
-export function securityRoom(c: RoomCtx): void {
+/** A security bot walking a loop around the room (clockwise or not). */
+export function addPatrolBot(c: RoomCtx): void {
   const { r, rng } = c;
   const inset = 30;
   const patrol = [
@@ -172,6 +173,11 @@ export function securityRoom(c: RoomCtx): void {
   ];
   if (rng.chance(0.5)) patrol.reverse();
   c.addEntity({ type: 'securityBot', x: patrol[0].x, y: patrol[0].y, patrol, roomId: c.id });
+}
+
+export function securityRoom(c: RoomCtx): void {
+  const { r, rng } = c;
+  addPatrolBot(c);
   c.addEntity({ type: 'turret', x: m(cx(r)), y: m(r.y1), dir: -Math.PI / 2, roomId: c.id });
   ceilingLights(c);
   scatterLoose(c, rng.int(1, 3));
