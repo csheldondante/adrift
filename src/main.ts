@@ -35,14 +35,14 @@ async function boot(): Promise<void> {
   const hud = new Hud(container);
   const app = { stage, field, input };
 
-  let level = buildDerelict();
-  const background = new Background(stage, level.center);
-  let game = new Game(app, level);
+  // level specs aren't kept around: their world-sized grids are only needed to build a run
+  const first = buildDerelict();
+  const background = new Background(stage, first.center);
+  let game = new Game(app, first);
 
   const restart = () => {
     game.dispose();
-    level = buildDerelict();
-    game = new Game(app, level);
+    game = new Game(app, buildDerelict());
   };
   createDebugPanel({
     restart,

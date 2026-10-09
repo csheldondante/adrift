@@ -45,7 +45,7 @@ export class PixelWorld {
 
   private pendingTerrainCuts: Rect[] = [];
   private readonly stamp: Uint32Array;
-  private readonly stack: Int32Array;
+  private stack: Int32Array; // sized to the detach cap, not the world
   private stampCounter = 1;
 
   constructor(
@@ -53,15 +53,15 @@ export class PixelWorld {
     terrainGrid: PixelGrid,
   ) {
     this.terrain = new Terrain(physics, terrainGrid, ORDER.terrain);
-    this.group.add(this.terrain.mesh);
+    this.group.add(this.terrain.view.object);
     this.stamp = new Uint32Array(terrainGrid.w * terrainGrid.h);
-    this.stack = new Int32Array(terrainGrid.w * terrainGrid.h);
+    this.stack = new Int32Array(0);
   }
 
   addBody(grid: PixelGrid, init: BodyInit): PixelBody {
     const b = new PixelBody(this.physics, grid, init, init.tags?.salvage ? ORDER.bodies + 1 : ORDER.bodies);
     this.bodies.push(b);
-    this.group.add(b.mesh);
+    this.group.add(b.view.object);
     return b;
   }
 
@@ -216,9 +216,11 @@ export class PixelWorld {
   private floodTerrain(start: number, genStart: number): number[] | null {
     const { grid } = this.terrain;
     const { w, h, mat } = grid;
+    const cap = tune.pixel.detachCap;
+    // pending cells never exceed visited×4, and a flood aborts past the cap
+    if (this.stack.length < cap * 4 + 16) this.stack = new Int32Array(cap * 4 + 16);
     const { stamp, stack } = this;
     const id = this.stampCounter++;
-    const cap = tune.pixel.detachCap;
     const cells: number[] = [];
     let sp = 0;
     stack[sp++] = start;
@@ -237,6 +239,7 @@ export class PixelWorld {
         if (!(MAT_FLAGS[mat[j]] & F.SOLID) || stamp[j] === id) continue;
         if (stamp[j] >= genStart) return null; // joined an anchored region
         stamp[j] = id;
+        if (sp >= stack.length) return null; // too big to be a loose chunk: treat as anchored
         stack[sp++] = j;
       }
     }

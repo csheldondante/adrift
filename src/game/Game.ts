@@ -89,7 +89,7 @@ export class Game {
     this.objective = new ExtractionObjective(level.extraction, salvage);
 
     this.backWall = level.backdrop ? new PixelLayer(level.backdrop, ORDER.backWall, [0.3, 0.33, 0.42]) : null;
-    if (this.backWall) this.root.add(this.backWall.mesh);
+    if (this.backWall) this.root.add(this.backWall.object);
     this.root.add(this.objective.mesh, this.pixels.group, this.ship.group, this.particles.group, this.fx);
     stage.world.add(this.root);
 
@@ -320,6 +320,8 @@ export class Game {
     this.camX += (tx - this.camX) * k;
     this.camY += (ty - this.camY) * k;
     this.app.stage.setView(this.camX, this.camY, this.zoom, dt);
+    // gas/heat readback band: the view plus a margin (CPU coupling only matters near the player)
+    this.app.field.setFocus(this.camY - this.zoom / 2 - 25, this.camY + this.zoom / 2 + 25);
   }
 
   private updateDebugLines(): void {

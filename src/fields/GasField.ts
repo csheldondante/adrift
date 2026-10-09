@@ -62,8 +62,12 @@ export class GasField {
   private readonly injectAttr: THREE.StorageBufferAttribute;
   private readonly solidCpu: Float32Array;
   private readonly injectCpu: Float32Array;
-  private solidDirty = true;
-  private injectDirty = false;
+  private solidRows: [number, number] | null = null; // field rows needing upload
+  private injRows: [number, number] | null = null;
+  private focus0 = 0;
+  private focus1 = 0;
+  private readRow0 = 0;
+  private readRows = 0;
   private readonly passes: THREE.ComputeNode[];
   private readonly u = {
     dt: uniform(1 / 120),
@@ -222,12 +226,16 @@ export class GasField {
     this.stateAttr.needsUpdate = true;
     this.facesAttr.needsUpdate = true;
     this.injectCpu.fill(0);
-    this.injectDirty = true;
     this.solidCpu.fill(0);
-    this.solidDirty = true;
+    this.injRows = [0, this.h - 1];
+    this.solidRows = [0, this.h - 1];
     this.readState = null;
     this.readFaces = null;
     this.generation++;
+  }
+
+  private static grow(r: [number, number] | null, y0: number, y1: number): [number, number] {
+    return r ? [Math.min(r[0], y0), Math.max(r[1], y1)] : [y0, y1];
   }
 
   /** Recomputes the wall mask for field cells overlapping a pixel-cell rect. */
@@ -236,6 +244,7 @@ export class GasField {
     const fy0 = Math.max(0, Math.floor(r.y0 / FIELD_SCALE));
     const fx1 = Math.min(this.w, Math.ceil(r.x1 / FIELD_SCALE));
     const fy1 = Math.min(this.h, Math.ceil(r.y1 / FIELD_SCALE));
+    if (fx1 <= fx0 || fy1 <= fy0) return;
     const half = (FIELD_SCALE * FIELD_SCALE) / 2;
     for (let fy = fy0; fy < fy1; fy++) {
       for (let fx = fx0; fx < fx1; fx++) {
@@ -247,7 +256,7 @@ export class GasField {
         this.solidCpu[fy * this.w + fx] = solid >= half ? 1 : 0;
       }
     }
-    this.solidDirty = true;
+    this.solidRows = GasField.grow(this.solidRows, fy0, fy1 - 1);
   }
 
   /** Adds gas/heat in a world-space disc (amounts are per-cell at the center, soft falloff). */
@@ -259,6 +268,7 @@ export class GasField {
     const y0 = Math.max(1, Math.floor(cy - r));
     const x1 = Math.min(this.w - 2, Math.ceil(cx + r));
     const y1 = Math.min(this.h - 2, Math.ceil(cy + r));
+    if (x1 < x0 || y1 < y0) return;
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / r;
@@ -269,51 +279,78 @@ export class GasField {
         this.injectCpu[i + 1] += heat * k;
       }
     }
-    this.injectDirty = true;
+    this.injRows = GasField.grow(this.injRows, y0, y1);
   }
 
   /** Fills a world-space rectangle with gas (e.g. initial room pressure). */
   fillRect(x0: number, y0: number, x1: number, y1: number, gas: number): void {
     const m = this.cellMeters;
-    for (let y = Math.floor(y0 / m); y < Math.ceil(y1 / m); y++)
+    const ry0 = Math.max(1, Math.floor(y0 / m));
+    const ry1 = Math.min(this.h - 2, Math.ceil(y1 / m) - 1);
+    if (ry1 < ry0) return;
+    for (let y = ry0; y <= ry1; y++)
       for (let x = Math.floor(x0 / m); x < Math.ceil(x1 / m); x++) {
-        if (x < 1 || y < 1 || x >= this.w - 1 || y >= this.h - 1) continue;
+        if (x < 1 || x >= this.w - 1) continue;
         this.injectCpu[(y * this.w + x) * 4] += gas;
       }
-    this.injectDirty = true;
+    this.injRows = GasField.grow(this.injRows, ry0, ry1);
+  }
+
+  /**
+   * Sets the world-space vertical band (meters) that is read back for CPU sampling. Reading
+   * the whole field every frame is too much bandwidth at dungeon scale, and CPU coupling
+   * (forces, ignition, damage) only matters near the player. Off-band, sample() returns 0.
+   */
+  setFocus(y0: number, y1: number): void {
+    this.focus0 = Math.max(0, Math.floor(y0 / this.cellMeters));
+    this.focus1 = Math.min(this.h, Math.ceil(y1 / this.cellMeters));
   }
 
   step(dt: number): void {
-    const { u } = this;
+    const { u, w } = this;
     u.stiffness.value = tune.gas.stiffness;
     u.damping.value = tune.gas.damping;
     u.heatDiffusion.value = tune.gas.heatDiffusion;
     const sub = dt / SUBSTEPS;
     u.dt.value = sub;
     u.heatKeep.value = Math.exp(-tune.gas.heatDecay * sub);
-    if (this.solidDirty) {
+    // upload only the rows that changed
+    if (this.solidRows) {
+      const [r0, r1] = this.solidRows;
+      this.solidAttr.addUpdateRange(r0 * w, (r1 - r0 + 1) * w);
       this.solidAttr.needsUpdate = true;
-      this.solidDirty = false;
+      this.solidRows = null;
     }
-    if (this.injectDirty) this.injectAttr.needsUpdate = true;
+    const inj = this.injRows;
+    if (inj) {
+      this.injectAttr.addUpdateRange(inj[0] * w * 4, (inj[1] - inj[0] + 1) * w * 4);
+      this.injectAttr.needsUpdate = true;
+    }
     for (let s = 0; s < SUBSTEPS; s++) this.renderer.compute(this.passes);
-    if (this.injectDirty) {
+    if (inj) {
       // the upload happened inside compute(); the GPU zeroes its copy in the commit pass
-      this.injectCpu.fill(0);
-      this.injectDirty = false;
+      this.injectCpu.fill(0, inj[0] * w * 4, (inj[1] + 1) * w * 4);
+      this.injRows = null;
     }
     this.requestReadback();
   }
 
   private requestReadback(): void {
     if (this.readPending) return;
+    const row0 = this.focus0;
+    const rows = this.focus1 - this.focus0;
+    if (rows <= 2) return;
     this.readPending = true;
     const gen = this.generation;
-    Promise.all([this.renderer.getArrayBufferAsync(this.stateAttr), this.renderer.getArrayBufferAsync(this.facesAttr)])
+    const offset = row0 * this.w * 16; // bytes (vec4 of f32 per cell)
+    const count = rows * this.w * 16;
+    Promise.all([this.renderer.getArrayBufferAsync(this.stateAttr, null, offset, count), this.renderer.getArrayBufferAsync(this.facesAttr, null, offset, count)])
       .then(([s, f]) => {
         if (this.disposed || gen !== this.generation) return;
         this.readState = new Float32Array(s as ArrayBuffer);
         this.readFaces = new Float32Array(f as ArrayBuffer);
+        this.readRow0 = row0;
+        this.readRows = rows;
       })
       .catch((e) => console.warn('field readback failed', e))
       .finally(() => {
@@ -321,7 +358,7 @@ export class GasField {
       });
   }
 
-  /** Samples the latest readback at a world position (nearest cell). */
+  /** Samples the latest readback at a world position (nearest cell); 0 outside the focus band. */
   sample(wx: number, wy: number, out: FieldSample): FieldSample {
     out.gas = out.heat = out.vx = out.vy = 0;
     const s = this.readState;
@@ -329,8 +366,8 @@ export class GasField {
     if (!s || !f) return out;
     const x = Math.floor(wx / this.cellMeters);
     const y = Math.floor(wy / this.cellMeters);
-    if (x < 1 || y < 1 || x >= this.w - 1 || y >= this.h - 1) return out;
-    const i = y * this.w + x;
+    if (x < 1 || x >= this.w - 1 || y < this.readRow0 + 1 || y >= this.readRow0 + this.readRows) return out;
+    const i = (y - this.readRow0) * this.w + x;
     out.gas = s[i * 4];
     out.heat = s[i * 4 + 1];
     // cell-centered velocity = average of the two faces on each axis

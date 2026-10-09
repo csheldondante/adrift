@@ -2,6 +2,14 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-09 — Scale-up groundwork for the dungeon ship
+
+The world is now 4096 × 2048 cells (512 × 256 m), 8× the area of the first level. This was the user's "about 4× per side" choice, ahead of the generated derelict.
+
+- **Tiled pixel rendering (`PixelView`):** grids are drawn as 256² tiles, each with its own texture. A cut re-uploads only the tiles it touched, and off-screen tiles are frustum-culled. Without this, every cut uploaded a 32 MB terrain texture. Small bodies use a single tile that shares the color buffer (no copy). Static layers such as the back wall `freeze()`: they upload once and drop the full-size source buffer.
+- **Gas field at 1 m cells** (`FIELD_SCALE` 8, 512 × 256): walls 7 or more pixels thick always seal. Only changed rows are uploaded (`addUpdateRange`). CPU readback covers just a horizontal band around the camera (view ± 25 m). A whole-field readback would be about 4 MB per frame. Off-band, `sample()` returns 0, so distant gas doesn't push bodies and distant heat doesn't ignite fuel. The GPU still simulates everywhere, so effects resume when you get close.
+- **Memory:** about 300 MB JS heap steady state, measured after a forced GC across 8 restarts with no growth. It's dominated by the world-sized typed arrays (material, hp, shade, heat, colors, tile copies, flood stamps). The flood-fill stack is now sized to the detach cap instead of the world, and `main` no longer holds the level spec. A restart takes about 0.3 s.
+
 ## 2026-10-09 — One-button harpoon (click / hold), clamping, heat glow, uncapped cutter
 
 The user's direction: the grapple is the first thing to make fun. It should support skilled slingshotting, grabbing explosives and swinging them at enemies, and winching objects close, clamping them on, then using them as a barrier or a ram. You should also be able to hitch a ride on large moving things: attach, winch up, clamp on contact.

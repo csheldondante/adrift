@@ -1,23 +1,22 @@
 // Shared base for anything made of pixel cells: static terrain and dynamic pixel bodies.
-// Owns the grid, its CPU color buffer + GPU texture, the display mesh, and the local<->world
+// Owns the grid, its CPU color buffer, the tiled display (PixelView), and the local<->world
 // transform (cells are CELL meters; local origin = grid bottom-left corner).
 //
 // Likely growth: a custom node material (per-cell emissive/heat glow, normal-ish edge
 // lighting) reading a material-id texture instead of baked RGBA. Painting is isolated in
 // `paint()` so that swap only touches this file.
 
-import * as THREE from 'three/webgpu';
 import { CELL } from '../config';
 import { cellColor, MAT_HP } from './materials';
 import { PixelGrid, type Rect } from './PixelGrid';
 import type { PhysOwner } from '../physics/Physics';
+import { PixelView } from '../render/PixelView';
 
 export abstract class PixelObject implements PhysOwner {
   abstract readonly kind: 'terrain' | 'pixelBody';
-  readonly texture: THREE.DataTexture;
-  readonly mesh: THREE.Mesh;
+  /** Display object (tiled textured quads), positioned from the cached transform. */
+  readonly view: PixelView;
   private readonly pixels: Uint32Array;
-  private textureDirty = false;
   /** Cells with visual heat, cooled and repainted each frame. */
   private readonly hot = new Set<number>();
 
@@ -32,18 +31,8 @@ export abstract class PixelObject implements PhysOwner {
     readonly grid: PixelGrid,
     renderOrder: number,
   ) {
-    const data = new Uint8Array(grid.w * grid.h * 4);
-    this.pixels = new Uint32Array(data.buffer);
-    this.texture = new THREE.DataTexture(data, grid.w, grid.h, THREE.RGBAFormat);
-    this.texture.magFilter = THREE.NearestFilter;
-    this.texture.minFilter = THREE.NearestFilter;
-    this.texture.colorSpace = THREE.SRGBColorSpace;
-    const geo = new THREE.PlaneGeometry(grid.w * CELL, grid.h * CELL);
-    geo.translate((grid.w * CELL) / 2, (grid.h * CELL) / 2, 0);
-    const mat = new THREE.MeshBasicMaterial({ map: this.texture, transparent: true, alphaTest: 0.5, depthTest: false, depthWrite: false });
-    this.mesh = new THREE.Mesh(geo, mat);
-    this.mesh.renderOrder = renderOrder;
-    this.mesh.frustumCulled = false;
+    this.pixels = new Uint32Array(grid.w * grid.h);
+    this.view = new PixelView(this.pixels, grid.w, grid.h, renderOrder);
     this.paint({ x0: 0, y0: 0, x1: grid.w, y1: grid.h });
     // pieces split off hot material keep glowing
     for (let i = 0; i < grid.heat.length; i++) if (grid.heat[i] > 0) this.hot.add(i);
@@ -87,7 +76,9 @@ export abstract class PixelObject implements PhysOwner {
     const m = g.mat[i];
     const max = MAT_HP[m];
     this.pixels[i] = cellColor(m, g.shade[i], max > 0 ? g.hp[i] / max : 1, g.heat[i]);
-    this.textureDirty = true;
+    const x = i % g.w;
+    const y = (i - x) / g.w;
+    this.view.markDirty(x, y, x + 1, y + 1);
   }
 
   /** Recomputes display colors for a cell region. */
@@ -105,17 +96,14 @@ export abstract class PixelObject implements PhysOwner {
         pixels[i] = cellColor(m, grid.shade[i], max > 0 ? grid.hp[i] / max : 1, grid.heat[i]);
       }
     }
-    this.textureDirty = true;
+    this.view.markDirty(x0, y0, x1, y1);
   }
 
   /** Uploads painted changes. Call once per frame before rendering. */
   syncVisual(): void {
-    if (this.textureDirty) {
-      this.texture.needsUpdate = true;
-      this.textureDirty = false;
-    }
-    this.mesh.position.set(this.px, this.py, 0);
-    this.mesh.rotation.z = this.angle;
+    this.view.sync();
+    this.view.object.position.set(this.px, this.py, 0);
+    this.view.object.rotation.z = this.angle;
   }
 
   protected setTransform(px: number, py: number, angle: number): void {
@@ -163,9 +151,6 @@ export abstract class PixelObject implements PhysOwner {
   }
 
   dispose(): void {
-    this.texture.dispose();
-    this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
-    this.mesh.removeFromParent();
+    this.view.dispose();
   }
 }

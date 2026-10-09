@@ -50,6 +50,18 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
   for (const md of modes) {
     restart();
     await sleep(300);
+    if (md === 'soak') {
+      for (let i = 0; i < 8; i++) {
+        const t = performance.now();
+        restart();
+        if (i === 0) log('restart ms', Math.round(performance.now() - t));
+        await sleep(300);
+      }
+      await sleep(1500);
+      (window as unknown as { gc?: () => void }).gc?.();
+      await sleep(200);
+      log('soak', { fps: (window as unknown as { __stats: { fps: number } }).__stats.fps, heapMB: Math.round(((performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0) / 1e6) });
+    }
     if (md === 'fly') {
       const x0 = game().ship.x;
       await hold('KeyW', 800);
@@ -132,6 +144,8 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       b.body.setTranslation({ x: 125, y: 40 }, true);
       b.body.setLinvel({ x: 8, y: 0 }, true);
       await sleep(1500);
+      (window as unknown as { gc?: () => void }).gc?.();
+      await sleep(200);
       const v = b.body.linvel();
       log('drift', { x: +b.body.translation().x.toFixed(1), vx: +v.x.toFixed(2), alive: b.alive });
     }
@@ -272,6 +286,8 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       crate.body.setLinvel({ x: 22, y: 0 }, true);
       const before = solidCount();
       await sleep(1500);
+      (window as unknown as { gc?: () => void }).gc?.();
+      await sleep(200);
       log('impact', { explosions: g.hazards.explosions, crateMass: Math.round(crate.body.mass()), removed: before - solidCount() });
     }
     if (md === 'cut') {
@@ -302,6 +318,8 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       // retreat and watch it vent
       place(m(300), m(640), 0);
       await sleep(1500);
+      (window as unknown as { gc?: () => void }).gc?.();
+      await sleep(200);
       g.ctx.field.sample(m(380), m(450), s);
       const speeds = g.pixels.bodies.filter((b) => {
         const c = b.body.worldCom();

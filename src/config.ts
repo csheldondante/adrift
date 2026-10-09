@@ -3,12 +3,12 @@
 /** Meters per pixel cell. All physics runs in meters. */
 export const CELL = 0.125;
 /** Terrain size in cells. */
-export const WORLD_W = 1024;
-export const WORLD_H = 768;
+export const WORLD_W = 4096;
+export const WORLD_H = 2048;
 /** Terrain collider chunk size in cells. */
 export const CHUNK = 32;
-/** Pixel cells per gas-field cell. */
-export const FIELD_SCALE = 4;
+/** Pixel cells per gas-field cell (1 m). Walls ≥ 7 cells thick always seal. */
+export const FIELD_SCALE = 8;
 
 export const FIXED_DT = 1 / 60;
 
