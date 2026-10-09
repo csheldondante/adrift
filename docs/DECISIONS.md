@@ -2,6 +2,23 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-09 — Security: vision-cone bots, alarm, bulkheads, turrets, drones
+
+The user asked for security bots with vision cones you can evade, and every alarm response.
+
+- **Robots are pixel bodies with controllers.** Bounded thrust means the ship can out-muscle them on a tether, and they can be harpooned, thrown, cut and blown up. A robot dies when its glowing EYE cells are destroyed, its body is broken, or under 40% of it remains; the wreck stays as debris.
+- **Security bots** patrol their room, sweeping a 70° cone with an 18 m range. The cone is drawn clipped by matter, so walls and crates visibly block sight. Suspicion builds while the bot can see you and decays when it can't: about 0.6 s point-blank to about 2 s at the cone's edge. The first pass (about 0.45 s) left no time to break line of sight. At full suspicion the bot raises the alarm, hunts, and shocks you on contact at 18 hp/s.
+- **Alarm:** ship-wide, ending 28 s after the last sighting. Any bot, drone or turret sighting refreshes the timer and the last known position.
+  - Bulkheads within 48 m seal: BULKHEAD slabs slide into the doorway specs over 0.8 s. They're terrain, so you can cut through, blast, or cut the edges and harpoon the slab out. Sealed doors stay sealed after the alert.
+  - Turrets wake. They track within ±77° of their wall normal, lead their shots, and die when 65% of the housing is cut away.
+  - Drone bays within 140 m launch three drones each, capped at 12. Drones hold about 10 m, strafe, and fire led shots.
+- **Nav field:** 2 m blocks with a BFS distance field toward the last known position, so any number of hunters can follow corridors without per-robot pathfinding. It's rebuilt when an alarm starts, to include anything cut since.
+- **Bullets** sweep each step. They chip pixels, robots included, so friendly fire happens. The ship is hit by a circle test.
+- **Testing lessons:**
+  - Placements must be validated, because teleporting into terrain registers MN-scale contact forces and kills the ship ("impact").
+  - Damage causes are tagged: impact, heat, explosion, shot, shocked, crushed.
+  - Autotest logs are JSON, because Chrome's console preview truncates objects and hid fields.
+
 ## 2026-10-09 — Machinery: crushers and rideable movers
 
 - **Machines are kinematic pixel bodies** made of new indestructible materials: PISTON steel and hazard STRIPE. They shove anything in the way, glow under the cutter but never cut, and report their velocity. So friction carries loose cargo, and a clamp (fixed joint) rides along: tested, the ship traveled exactly with the mover (8.64 m vs 8.64 m).

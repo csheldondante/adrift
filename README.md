@@ -21,6 +21,8 @@ npm run smoke -- <outDir> "autotest=all"   # headless Chrome run with scripted s
 - `?group.key=value`: override a tunable, e.g. `?grapple.hookSpeed=90`.
 - `?autotest=all|hook|clamp|glow|overview|soak|…`: scripted scenarios for `npm run smoke`.
 
+Security: bots patrol rooms with visible vision cones. Stay out of a cone, or break line of sight before the WATCHED meter fills. An alarm seals nearby bulkheads (cut through them, or cut their edges and yank the slab out), wakes turrets, and launches drones from their bays. Destroy a robot by breaking its red eye.
+
 The top-left minimap reveals the ship as you explore. It always shows you (white), the core (cyan) and the extraction zone (green).
 
 ## Controls
