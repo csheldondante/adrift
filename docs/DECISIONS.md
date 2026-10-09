@@ -2,6 +2,17 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-09 — Generated dungeon derelict (hybrid generator) + minimap
+
+User choices: a hybrid generator, about 4× size, deep core extraction as the goal, and every alarm response (implemented in later phases).
+
+- **Slot grid:** 13 × 6 slots of 256 cells (32 m). Rooms are carved from a solid hull. The bulk between rooms is plate with an indestructible 16 m girder lattice, so cutting shortcuts is possible but routed by girders, and everything stays anchored.
+- **Graph = spine + branches + loops.** A plain random tree of about 25 rooms bunched into the left half of the hull, even when biased forward, and the deepest room ended up spatially close to the entry. A spine walk from the entry to the far end (forward, with 35% vertical jogs), short 1–3-room side branches, and about 14% extra loops gives a dungeon that spans the ship, with the vault (deepest by BFS) at the far end.
+- **Room templates** (`rooms.ts`): entry, vault, cargo, fuel, crew (pressurized, doorways plugged), machinery, crusher, moverHall (one merged 2-slot hall), droneBay, security. Templates paint terrain and register bodies, plus entity markers (crusher, mover, securityBot, turret, droneBay) for later phases to bring to life. Doorways are recorded as `DoorSpec`s for alarm sealing.
+- **Loose bodies only spawn into free space**, retrying random spots in the room. Bodies spawned overlapping walls got violent depenetration kicks, and explosive barrels detonated on load (22 explosions in 5 s).
+- **Bug class fixed at the source:** `PixelGrid.set` now floors its coordinates. A template passing y = n + 0.5 shifted the flat index by half a row: 2048 cells sideways in a 4096-wide grid, which painted the vault's cage 256 m away in solid bulk.
+- **Minimap with fog of war:** 16 cells per pixel, a 34 m reveal radius, redrawn at 4 Hz.
+
 ## 2026-10-09 — Scale-up groundwork for the dungeon ship
 
 The world is now 4096 × 2048 cells (512 × 256 m), 8× the area of the first level. This was the user's "about 4× per side" choice, ahead of the generated derelict.

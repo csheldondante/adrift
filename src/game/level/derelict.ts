@@ -13,25 +13,10 @@
 import { CELL, WORLD_H, WORLD_W } from '../../config';
 import { M } from '../../pixel/materials';
 import { PixelGrid } from '../../pixel/PixelGrid';
-import type { BodyInit } from '../../pixel/PixelBody';
-import type { Zone } from '../Objective';
 import { Painter } from './Painter';
 import { barrel, crate, salvageCore, scrap } from './props';
 
-export interface BodySpec extends BodyInit {
-  grid: PixelGrid;
-}
-
-export interface LevelSpec {
-  terrain: PixelGrid;
-  backdrop?: PixelGrid;
-  bodies: BodySpec[];
-  salvageIndex: number;
-  shipSpawn: { x: number; y: number; angle: number };
-  extraction: Zone;
-  pressurized: { x0: number; y0: number; x1: number; y1: number; gas: number }[];
-  center: { x: number; y: number };
-}
+import type { BodySpec, LevelSpec } from './types';
 
 /** Cell coords -> meters. */
 const m = (c: number) => c * CELL;
@@ -154,6 +139,11 @@ export function buildDerelict(): LevelSpec {
   add(scrap(8, 24), 950, 200, { w: 0.05 });
 
   return {
+    name: 'Derelict (classic)',
+    seed: 0,
+    rooms: [],
+    doors: [],
+    entities: [],
     terrain: g,
     backdrop: back,
     bodies,

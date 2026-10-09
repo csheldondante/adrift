@@ -50,6 +50,13 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
   for (const md of modes) {
     restart();
     await sleep(300);
+    if (md === 'overview') {
+      const g = game();
+      g.zoom = Number(new URLSearchParams(location.search).get('zoom') ?? 300);
+      g.debugCamera = (window as unknown as { __level: { center: { x: number; y: number } } }).__level.center;
+      await sleep(800);
+      await shot('overview');
+    }
     if (md === 'soak') {
       for (let i = 0; i < 8; i++) {
         const t = performance.now();

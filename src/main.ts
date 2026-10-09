@@ -11,8 +11,10 @@ import { ORDER } from './render/order';
 import { Stage } from './render/Stage';
 import { Game } from './game/Game';
 import { buildDerelict } from './game/level/derelict';
+import { buildDungeon } from './game/level/dungeon';
 import { Hud } from './ui/Hud';
 import { createDebugPanel } from './ui/DebugPanel';
+import { Minimap } from './ui/Minimap';
 import { runAutotest } from './dev/autotest';
 import { applyTuneOverrides } from './dev/overrides';
 
@@ -33,16 +35,26 @@ async function boot(): Promise<void> {
   const field = new GasField(stage.renderer, WORLD_W, WORLD_H, ORDER.field);
   stage.scene.add(field.mesh);
   const hud = new Hud(container);
+  const minimap = new Minimap(container);
   const app = { stage, field, input };
 
+  // ?level=classic for the original small derelict (autotests default to it), else a
+  // generated dungeon; ?seed=N pins the generator, otherwise each run gets a new ship
+  const params = new URLSearchParams(location.search);
+  const levelName = params.get('level') ?? (params.has('autotest') ? 'classic' : 'dungeon');
+  const seedParam = params.get('seed');
+  const buildLevel = () => (levelName === 'classic' ? buildDerelict() : buildDungeon(seedParam ? Number(seedParam) : undefined));
   // level specs aren't kept around: their world-sized grids are only needed to build a run
-  const first = buildDerelict();
+  const first = buildLevel();
+  (window as unknown as { __level: { center: { x: number; y: number } } }).__level = { center: first.center };
+  if (params.has('dumpRooms')) console.log('ROOMS', JSON.stringify(first.rooms.map((r) => [r.id, r.kind, Math.round(r.x0), Math.round(r.y0), Math.round(r.x1), Math.round(r.y1)])));
+  console.log(`level: ${first.name} seed ${first.seed} rooms ${first.rooms.length} entities ${first.entities.length}`);
   const background = new Background(stage, first.center);
   let game = new Game(app, first);
 
   const restart = () => {
     game.dispose();
-    game = new Game(app, buildDerelict());
+    game = new Game(app, buildLevel());
   };
   createDebugPanel({
     restart,
@@ -63,6 +75,7 @@ async function boot(): Promise<void> {
     game.update(dt);
     background.update(stage);
     hud.update(game, stage);
+    minimap.update(game, dt);
     stage.render();
 
     fpsAcc += dt;

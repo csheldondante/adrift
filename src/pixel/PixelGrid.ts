@@ -59,12 +59,16 @@ export class PixelGrid {
     return (MAT_FLAGS[this.mat[y * this.w + x]] & F.SOLID) !== 0;
   }
 
-  set(x: number, y: number, mat: number, shade = hash2(x, y)): void {
+  set(x: number, y: number, mat: number, shade?: number): void {
+    // integer cells only: a fractional y would shift the flat index by a fraction of a row
+    // (y = n + 0.5 lands half a row = w/2 cells sideways)
+    x = Math.floor(x);
+    y = Math.floor(y);
     if (!this.inside(x, y)) return;
     const i = y * this.w + x;
     this.mat[i] = mat;
     this.hp[i] = MAT_HP[mat];
-    this.shade[i] = shade;
+    this.shade[i] = shade ?? hash2(x, y);
   }
 
   countSolid(): number {

@@ -4,8 +4,8 @@
 // bow between ship and head, and a fast winch snaps the slack taut. From then on the rope is
 // real physics (wraps corners, stretches a little, tows, whips things around).
 //
-// States: idle â flying â (thunk) â attached [tightening â snug] â idle
-//                       â (out of range) â retracting â idle
+// States: idle → flying → (thunk) → attached [tightening → snug] → idle
+//                       ↘ (out of range) → retracting → idle
 // Right mouse: fire (idle) / release (attached). Q/E reel in/out.
 //
 // Rendering: a taut rope with a clear line of sight between its ends is drawn as a straight
@@ -33,14 +33,14 @@ const nose = { x: 0, y: 0 };
 const tmp = { x: 0, y: 0 };
 
 /**
- * Points along a slack bow (parabola) from a to b whose arc length â `len`, spaced evenly,
- * excluding the endpoints. `side` (Â±1) picks which way it bows.
+ * Points along a slack bow (parabola) from a to b whose arc length ≈ `len`, spaced evenly,
+ * excluding the endpoints. `side` (±1) picks which way it bows.
  */
 function bowLayout(a: P, b: P, len: number, n: number, side: number): P[] {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const d = Math.max(1e-3, Math.hypot(dx, dy));
-  // parabola arc length â d + 8hÂ²/(3d)  â  h for the requested slack
+  // parabola arc length ≈ d + 8h²/(3d)  →  h for the requested slack
   const h = side * Math.sqrt(Math.max(0, (3 * d * (len - d)) / 8));
   const nx = -dy / d;
   const ny = dx / d;
@@ -364,7 +364,7 @@ export class Grapple implements Tool {
     if (!this.tightening && (!g.autoTakeUp || this.reelHold > 0)) return true;
     // Winch: fast right after impact (tightening), then a gentle take-up that keeps the rope
     // straight as the ship drifts toward the anchor. With a clear line between the ends,
-    // "straight" is geometric (end distance â length); a swinging slack bow spikes tension
+    // "straight" is geometric (end distance ≈ length); a swinging slack bow spikes tension
     // mid-swing, so tension alone isn't trusted. When wrapped round a corner, sustained
     // tension is the only signal. Never reel past the target in one step (no jerks).
     const n = rope.points(this.pts);
@@ -510,15 +510,15 @@ export class Grapple implements Tool {
     const pivot = `pivot ${tune.grapple.pivot}`;
     switch (this.state) {
       case 'idle':
-        return `ready Â· ${pivot}`;
+        return `ready · ${pivot}`;
       case 'flying':
-        return `firing Â· ${pivot}`;
+        return `firing · ${pivot}`;
       case 'clamped':
         return `clamped · click RMB to let go`;
       case 'retracting':
-        return `missed Â· ${pivot}`;
+        return `missed · ${pivot}`;
       default:
-        return `${this.length.toFixed(1)} m${this.tension > 0 ? ` Â· ${(this.tension / 1000).toFixed(1)} kN` : ' Â· slack'} Â· ${pivot}`;
+        return `${this.length.toFixed(1)} m${this.tension > 0 ? ` · ${(this.tension / 1000).toFixed(1)} kN` : ' · slack'} · ${pivot}`;
     }
   }
 

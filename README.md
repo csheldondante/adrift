@@ -13,6 +13,16 @@ npm run typecheck
 npm run smoke -- <outDir> "autotest=all"   # headless Chrome run with scripted scenarios + screenshots
 ```
 
+## Levels & URL parameters
+
+- Default: a **generated derelict**. It's about 512 × 256 m, with 30–36 rooms off a spine from the prow entry to the vault at the far end. Every run is a new ship.
+- `?seed=N`: pin the generator to a specific ship.
+- `?level=classic`: the original small derelict. Autotests use it by default.
+- `?group.key=value`: override a tunable, e.g. `?grapple.hookSpeed=90`.
+- `?autotest=all|hook|clamp|glow|overview|soak|…`: scripted scenarios for `npm run smoke`.
+
+The top-left minimap reveals the ship as you explore. It always shows you (white), the core (cyan) and the extraction zone (green).
+
 ## Controls
 
 | Input | Action |

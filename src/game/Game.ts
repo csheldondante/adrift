@@ -22,7 +22,7 @@ import type { Stage } from '../render/Stage';
 import { Cutter } from './Cutter';
 import { Grapple } from './Grapple';
 import { Hazards } from './Hazards';
-import type { LevelSpec } from './level/derelict';
+import type { LevelSpec } from './level/types';
 import { ExtractionObjective } from './Objective';
 import { Ship } from './Ship';
 import type { Controls, GameContext, Tool } from './types';
@@ -55,7 +55,9 @@ export class Game {
   private readonly worldH: number;
   private acc = 0;
   time = 0;
-  private zoom = 34;
+  zoom = 34;
+  /** Debug/test: if set, the camera looks here instead of following the ship. */
+  debugCamera: { x: number; y: number } | null = null;
   private camX: number;
   private camY: number;
   private deathHandled = false;
@@ -314,9 +316,9 @@ export class Game {
   private updateCamera(dt: number): void {
     const sh = this.ship;
     const v = sh.body.linvel();
-    const tx = sh.x + v.x * 0.35 + (this.controls.aimX - sh.x) * 0.18;
-    const ty = sh.y + v.y * 0.35 + (this.controls.aimY - sh.y) * 0.18;
-    const k = 1 - Math.exp(-dt * 4);
+    const tx = this.debugCamera ? this.debugCamera.x : sh.x + v.x * 0.35 + (this.controls.aimX - sh.x) * 0.18;
+    const ty = this.debugCamera ? this.debugCamera.y : sh.y + v.y * 0.35 + (this.controls.aimY - sh.y) * 0.18;
+    const k = this.debugCamera ? 1 : 1 - Math.exp(-dt * 4);
     this.camX += (tx - this.camX) * k;
     this.camY += (ty - this.camY) * k;
     this.app.stage.setView(this.camX, this.camY, this.zoom, dt);
