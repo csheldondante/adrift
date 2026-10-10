@@ -139,7 +139,7 @@ export class Ship implements PhysOwner {
     if (!this.alive) return;
     const s = tune.ship;
     const a = this.body.rotation();
-    const f = c.thrust > 0 ? c.thrust * s.thrust : c.thrust * s.reverseThrust;
+    const f = Math.max(0, c.thrust) * s.thrust;
     this.thrustLevel = c.thrust;
     if (f !== 0) this.body.applyImpulse({ x: Math.cos(a) * f * dt, y: Math.sin(a) * f * dt }, true);
     // Flight assist: when not thrusting, RCS jets push against drift with a bounded force.
@@ -156,16 +156,24 @@ export class Ship implements PhysOwner {
         this.brakeDirY = v.y / speed;
       }
     }
-    this.turnInput = c.turn;
-    // Turning is a rate controller with bounded angular acceleration: A/D drive spin toward
-    // ±turnRate, release brakes to zero (if assist is on). It still acts through torque, so
-    // impacts and off-center loads can knock the ship around and it has to recover.
-    const target = c.turn !== 0 ? c.turn * s.turnRate : s.rotationAssist ? 0 : null;
-    if (target !== null) {
-      const maxDw = s.turnAccel * dt;
-      const dw = Math.max(-maxDw, Math.min(maxDw, target - this.body.angvel()));
-      if (dw !== 0) this.body.applyTorqueImpulse(dw * this.body.principalInertia(), true);
+    // Aim steering: the ship always turns to face the aim point. Desired spin is the fastest
+    // rate that can still brake to zero by the target angle (√(2·accel·err)), capped by
+    // turnRate, with a linear tail near zero so it settles without chatter. Applied through
+    // bounded torque, so impacts and loads still knock the ship around and it recovers.
+    const p = this.body.translation();
+    const dx = c.aimX - p.x;
+    const dy = c.aimY - p.y;
+    let wantW = 0;
+    if (dx * dx + dy * dy > 1.5 * 1.5) {
+      const err = Math.atan2(Math.sin(Math.atan2(dy, dx) - a), Math.cos(Math.atan2(dy, dx) - a));
+      const mag = Math.min(s.turnRate, Math.sqrt(2 * s.turnAccel * Math.abs(err)) * 0.85, Math.abs(err) * 14);
+      wantW = Math.sign(err) * mag;
     }
+    const maxDw = s.turnAccel * dt;
+    const dw = Math.max(-maxDw, Math.min(maxDw, wantW - this.body.angvel()));
+    if (dw !== 0) this.body.applyTorqueImpulse(dw * this.body.principalInertia(), true);
+    // RCS turning puffs only for real steering effort, not settling
+    this.turnInput = Math.abs(dw) > maxDw * 0.3 ? Math.sign(dw) : 0;
   }
 
   /** What finished the ship off (for the death banner and tests). */

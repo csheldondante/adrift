@@ -2,6 +2,14 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-10 — Aim steering: the ship faces the cursor; Space thrusts
+
+The user wanted "a minor change with a major impact": the ship always accelerates itself to turn toward the cursor, with no A/D or S, and thrust on Space.
+
+- **Steering profile:** desired spin = sign(err) · min(turnRate, 0.85·√(2·turnAccel·|err|), 14·|err|). That's the fastest spin that can still brake to zero by the target angle, plus a linear tail so it settles without chatter. It's applied as bounded torque, so impacts and loads still knock the ship around and it recovers. Measured: a 90° swing settles in 0.5 s and 180° in 0.84 s, with 0° overshoot. Within 1.5 m of the ship the cursor is ignored, so the heading doesn't whip around when you aim at yourself.
+- **Removed:** reverse thrust, the A/D turn input (`Controls.turn`), and the `rotationAssist` toggle; steering is always on. Flight-assist RCS braking is unchanged and is now the only way to slow down besides turning around and burning.
+- **The rope pivot matters more now:** with the tether at the center of mass, the ship holds its aim while towing: the max heading error stayed at about 5° across test runs. At the nose, the load can drag the aim off, and the steering has to fight it; that varies with geometry, from 26.5° in one isolated run to 3° in another.
+
 ## 2026-10-09 — Laser push + heat meter, recharging shields
 
 The user asked: "The laser should also push things. The ship should have recharging shields. The laser should have limited use with a heat meter that has a cooldown if it fills up."

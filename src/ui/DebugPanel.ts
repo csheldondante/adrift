@@ -19,11 +19,9 @@ export function createDebugPanel(actions: DebugActions): GUI {
 
   const s = gui.addFolder('Ship');
   s.add(tune.ship, 'thrust', 0, 10000, 50);
-  s.add(tune.ship, 'reverseThrust', 0, 10000, 50);
   s.add(tune.ship, 'turnRate', 0.5, 12, 0.1).name('turn rate (rad/s)');
   s.add(tune.ship, 'turnAccel', 2, 150, 1).name('turn accel (rad/s²)');
   s.add(tune.ship, 'density', 20, 600, 5).name('density (restart)');
-  s.add(tune.ship, 'rotationAssist');
   s.add(tune.ship, 'flightAssist').name('flight assist (RCS brake)');
   s.add(tune.ship, 'brakeForce', 0, 4000, 10).name('RCS brake force (N)');
 

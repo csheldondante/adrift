@@ -49,7 +49,7 @@ export class Hud {
       'div',
       'hud-help',
       this.root,
-      `<b>W/S</b> thrust · <b>A/D</b> rotate · <b>Mouse</b> aim<br>
+      `<b>Mouse</b> aim (the ship turns to face it) · <b>Space</b> thrust<br>
        <b>LMB</b> cutter · <b>RMB</b> harpoon · click again: let go · hold: winch in &amp; clamp on contact<br>
        <b>Q/E</b> reel in/out · 
 <b>P</b> rope pivot COM/nose · <b>Wheel</b> zoom · <b>R</b> restart · <b>H</b> hide help · <b>\`</b> debug panel`,

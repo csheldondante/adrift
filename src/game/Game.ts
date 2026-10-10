@@ -51,7 +51,7 @@ export class Game {
   readonly security: Security;
   readonly cutter: Cutter;
   readonly grapple: Grapple;
-  readonly controls: Controls = { thrust: 0, turn: 0, reel: 0, aimX: 0, aimY: 0 };
+  readonly controls: Controls = { thrust: 0, reel: 0, aimX: 0, aimY: 0 };
   readonly ctx: GameContext;
   /** Tool slots: [0] = left mouse, [1] = right mouse. Swap entries to rebind. */
   readonly slots: Tool[];
@@ -151,8 +151,7 @@ export class Game {
 
     // controls
     const c = this.controls;
-    c.thrust = (input.down('KeyW') ? 1 : 0) - (input.down('KeyS') ? 1 : 0);
-    c.turn = (input.down('KeyA') ? 1 : 0) - (input.down('KeyD') ? 1 : 0);
+    c.thrust = input.down('Space') ? 1 : 0;
     c.reel = (input.down('KeyE') ? 1 : 0) - (input.down('KeyQ') ? 1 : 0);
     stage.screenToWorld(input.mouseX, input.mouseY, v2);
     c.aimX = v2.x;

@@ -78,42 +78,44 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       log('soak', { fps: (window as unknown as { __stats: { fps: number } }).__stats.fps, heapMB: Math.round(((performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0) / 1e6) });
     }
     if (md === 'fly') {
-      const x0 = game().ship.x;
-      await hold('KeyW', 800);
+      // aim ahead (+x) and hold Space
+      const g = game();
+      aim(g.ship.x + 30, g.ship.y);
+      await sleep(200);
+      const x0 = g.ship.x;
+      await hold('Space', 800, () => aim(g.ship.x + 30, g.ship.y));
       await sleep(300);
-      const v = game().ship.body.linvel();
-      log('fly', { dx: +(game().ship.x - x0).toFixed(2), vx: +v.x.toFixed(2), vy: +v.y.toFixed(2) });
+      const v = g.ship.body.linvel();
+      log('fly', { dx: +(g.ship.x - x0).toFixed(2), vx: +v.x.toFixed(2), vy: +v.y.toFixed(2) });
     }
     if (md === 'turn') {
-      // time to reach 95% of turn rate, then time to brake to (almost) zero after release
-      const b = game().ship.body;
-      input.simulateDown('KeyA');
-      const t0 = performance.now();
-      let tUp = -1;
-      while (performance.now() - t0 < 600) {
-        if (tUp < 0 && b.angvel() >= tune.ship.turnRate * 0.95) tUp = performance.now() - t0;
-        await sleep(5);
-      }
-      input.simulateUp('KeyA');
-      const t1 = performance.now();
-      let tDown = -1;
-      while (performance.now() - t1 < 1500) {
-        if (Math.abs(b.angvel()) < 0.1) {
-          tDown = performance.now() - t1;
-          break;
+      // aim steering: swing the cursor 90° and 180° away; time to settle within 3°, and overshoot
+      const g = game();
+      const results: Record<string, unknown> = {};
+      for (const deg of [90, 180]) {
+        const a0 = g.ship.angle;
+        const target = a0 + (deg * Math.PI) / 180 - (deg === 180 ? 0.01 : 0);
+        const t0 = performance.now();
+        let settled = -1;
+        let maxErrPast = 0;
+        while (performance.now() - t0 < 2000) {
+          aim(g.ship.x + Math.cos(target) * 20, g.ship.y + Math.sin(target) * 20);
+          const err = Math.atan2(Math.sin(target - g.ship.angle), Math.cos(target - g.ship.angle));
+          if (err < 0) maxErrPast = Math.max(maxErrPast, -err); // went past the target
+          if (settled < 0 && Math.abs(err) < 0.05 && Math.abs(g.ship.body.angvel()) < 0.3) settled = performance.now() - t0;
+          await sleep(5);
         }
-        await sleep(5);
+        results[`${deg}deg`] = { settleMs: Math.round(settled), overshootDeg: +((maxErrPast * 180) / Math.PI).toFixed(1) };
       }
-      log('turn', { spinUpMs: Math.round(tUp), brakeMs: Math.round(tDown), rate: tune.ship.turnRate });
+      log('turn', results);
     }
     if (md === 'rope') {
-      // tow the core sideways with each pivot; raw torque shows with rotation assist off
-      const assist = tune.ship.rotationAssist;
+      // tow the core while holding a heading: with the rope at the center of mass the tether
+      // can't torque the ship, so heading error stays ~0; at the nose the steering has to fight it
       for (const pivot of ['com', 'nose'] as const) {
         restart();
         await sleep(300);
         tune.grapple.pivot = pivot;
-        tune.ship.rotationAssist = false;
         const g = game();
         const core = g.salvage.body;
         core.setTranslation({ x: 25, y: 80 }, true); // open space: no walls to bump
@@ -121,35 +123,36 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         core.setAngvel(0, true);
         await sleep(50);
         const c = core.worldCom();
-        // face up-right before firing so no teleport-rotation jerks the anchored rope
-        place(c.x + 7, c.y, Math.PI / 4);
+        place(c.x + 7, c.y, Math.PI);
         await sleep(150);
         aim(c.x, c.y);
         input.simulateDown('Mouse2');
         await sleep(40);
         input.simulateUp('Mouse2');
         await waitTaut();
-        const a0 = g.ship.angle;
+        // now steer up-right (45°) and burn: the rope pulls from behind and to the side
+        const heading = Math.PI / 4;
+        const steer = () => aim(g.ship.x + Math.cos(heading) * 30, g.ship.y + Math.sin(heading) * 30);
+        steer();
+        await sleep(1200); // finish the 135° swing before measuring
         let maxTaut = 0;
-        let maxSpin = 0;
         let maxEnd = 0;
-        await hold('KeyW', 2000, () => {
+        let maxErr = 0;
+        await hold('Space', 2000, () => {
+          steer();
           maxTaut = Math.max(maxTaut, g.grapple.tautness);
           maxEnd = Math.max(maxEnd, g.grapple.endRatio);
-          if (new URLSearchParams(location.search).has("trace") && Math.random() < 0.08) log("trace", pivot, +g.grapple.endRatio.toFixed(3), +g.ship.body.angvel().toFixed(2), +g.grapple.length.toFixed(2));
-          maxSpin = Math.max(maxSpin, Math.abs(g.ship.body.angvel()));
+          maxErr = Math.max(maxErr, Math.abs(Math.atan2(Math.sin(heading - g.ship.angle), Math.cos(heading - g.ship.angle))));
         });
         const c1 = g.salvage.body.worldCom();
         log(`rope pivot=${pivot}`, {
           attached: g.grapple.attached,
           maxPath: +maxTaut.toFixed(3),
           maxEnds: +maxEnd.toFixed(3),
-          maxSpin: +maxSpin.toFixed(2),
-          headingChange: +(g.ship.angle - a0).toFixed(2),
+          maxHeadingErrDeg: +((maxErr * 180) / Math.PI).toFixed(1),
           coreMoved: +Math.hypot(c1.x - c.x, c1.y - c.y).toFixed(2),
         });
       }
-      tune.ship.rotationAssist = assist;
       tune.grapple.pivot = 'com';
     }
     if (md === 'drift') {
@@ -232,7 +235,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       input.simulateUp('Mouse2');
       shot('clamped');
       const gap0 = Math.hypot(crate.body.worldCom().x - g.ship.x, crate.body.worldCom().y - g.ship.y);
-      await hold('KeyW', 1000);
+      await hold('Space', 1000);
       if (!crate.alive) { log('clamp', { error: 'crate destroyed', health: Math.round(g.ship.health) }); continue; }
       const gap1 = Math.hypot(crate.body.worldCom().x - g.ship.x, crate.body.worldCom().y - g.ship.y);
       const v = g.ship.body.linvel();
@@ -533,7 +536,9 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
     }
     if (md === 'brake') {
       const g = game();
-      await hold('KeyW', 700);
+      aim(g.ship.x + 30, g.ship.y);
+      await sleep(200);
+      await hold('Space', 700, () => aim(g.ship.x + 30, g.ship.y));
       const v0 = Math.hypot(g.ship.body.linvel().x, g.ship.body.linvel().y);
       await sleep(1000);
       const v1 = Math.hypot(g.ship.body.linvel().x, g.ship.body.linvel().y);
@@ -618,7 +623,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       const c0 = target.body.worldCom();
       aim(c.x - 5.25, c.y + 20);
 
-      await hold('KeyW', 1500);
+      await hold('Space', 1500);
       const c1 = target.body.worldCom();
       log('grapple tow', { health: Math.round(g.ship.health), coreMoved: +Math.hypot(c1.x - c0.x, c1.y - c0.y).toFixed(2), coreMass: Math.round(target.body.mass()), shipMass: Math.round(g.ship.body.mass()) });
     }

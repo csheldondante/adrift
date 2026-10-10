@@ -12,10 +12,9 @@ import type { Hazards } from './Hazards';
 
 /** Per-step control intents, decoupled from devices so AI/replays can drive them later. */
 export interface Controls {
-  thrust: number; // -1..1
-  turn: number; // -1..1 (positive = counter-clockwise)
+  thrust: number; // 0..1 forward (Space)
   reel: number; // -1 reel in .. 1 reel out
-  aimX: number; // world meters
+  aimX: number; // world meters; the ship steers to face this point
   aimY: number;
 }
 
