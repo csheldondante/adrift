@@ -1,5 +1,7 @@
 // Cutting beam: a hitscan ray to the first solid pixel; damages a disc at the impact point
-// each physics step, heats the gas/heat field there, and throws sparks.
+// each physics step, heats the gas/heat field there, pushes loose bodies (radiation pressure,
+// tuned for fun), and throws sparks. A heat meter limits use: firing heats it, idling cools
+// it, and filling it overheats the laser until it has cooled all the way down.
 //
 // Likely growth: weapons share this shape (ray -> impact -> effects). If several appear,
 // extract the "ray + impact effect" into a reusable beam component.
@@ -7,6 +9,7 @@
 import { tune } from '../config';
 import { ORDER } from '../render/order';
 import { Ribbon } from '../render/Ribbon';
+import type { PixelBody } from '../pixel/PixelBody';
 import type { GameContext, Tool } from './types';
 
 const nose = { x: 0, y: 0 };
@@ -22,6 +25,10 @@ export class Cutter implements Tool {
   private ey = 0;
   private hitting = false;
   private t = 0;
+  /** Laser heat 0..1 (HUD meter). */
+  heat = 0;
+  /** Locked out after overheating, until heat returns to 0. */
+  overheated = false;
 
   constructor(private readonly ctx: GameContext) {
     ctx.fx.add(this.glow.mesh, this.core.mesh);
@@ -32,9 +39,19 @@ export class Cutter implements Tool {
 
   fixedUpdate(dt: number, held: boolean): void {
     const { ctx } = this;
-    this.active = held && ctx.ship.alive;
-    if (!this.active) return;
     const c = tune.cutter;
+    this.active = held && ctx.ship.alive && !this.overheated;
+    if (!this.active) {
+      this.heat = Math.max(0, this.heat - (this.overheated ? c.overheatCoolPerSecond : c.coolPerSecond) * dt);
+      if (this.overheated && this.heat <= 0) this.overheated = false;
+      return;
+    }
+    this.heat = Math.min(1, this.heat + c.heatPerSecond * dt);
+    if (this.heat >= 1) {
+      this.overheated = true;
+      ctx.ship.nose(nose);
+      for (let k = 0; k < 12; k++) ctx.particles.smoke(nose.x, nose.y, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 0.8, 0.35);
+    }
     ctx.ship.nose(nose);
     let dx = ctx.controls.aimX - nose.x;
     let dy = ctx.controls.aimY - nose.y;
@@ -56,6 +73,8 @@ export class Cutter implements Tool {
     const cx = hit.x + dx * c.radius * 0.5;
     const cy = hit.y + dy * c.radius * 0.5;
     ctx.pixels.damageCircle(cx, cy, c.radius, c.damagePerSecond * dt);
+    // shove what we're hitting (machines are kinematic and ignore it)
+    if (hit.target.kind === 'pixelBody') (hit.target as PixelBody).body.applyImpulseAtPoint({ x: dx * c.push * dt, y: dy * c.push * dt }, { x: hit.x, y: hit.y }, true);
     ctx.field.inject(cx, cy, c.radius, 0, c.heat * dt);
     // the struck surface glows (uncuttable material too: it heats but never gives)
     ctx.pixels.heatCircle(cx, cy, c.radius * 1.5, c.glowRate * dt);
@@ -79,6 +98,7 @@ export class Cutter implements Tool {
   }
 
   status(): string {
+    if (this.overheated) return 'OVERHEATED';
     return this.active ? (this.hitting ? 'cutting' : 'firing') : 'ready';
   }
 

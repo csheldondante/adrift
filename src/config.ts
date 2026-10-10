@@ -27,6 +27,9 @@ export const tune = {
     flightAssist: true, // RCS jets brake drift when not thrusting (visible as side puffs)
     brakeForce: 700, // N of braking from the RCS jets (≈2.3 m/s² unloaded)
     maxHealth: 100,
+    shieldMax: 60, // recharging shield that soaks damage before the hull
+    shieldRegen: 20, // shield per second once recharging
+    shieldDelay: 2.5, // s without taking damage before the shield starts recharging
     contactEventThreshold: 1500, // N: contact force at which the ship registers that it touched something
     safeImpactSpeed: 3.5, // m/s velocity change in one contact step that the hull shrugs off
     impactDamagePerSpeed: 6, // hp per m/s above the safe speed (12 m/s crash ≈ 50 hp, ~20 m/s is fatal)
@@ -65,6 +68,10 @@ export const tune = {
     range: 200, // m (effectively unlimited; the raycast stops at the first solid pixel)
     heat: 0.9, // gas-field heat injected per second
     glowRate: 3, // visual surface heat per second at the beam center (1 ≈ bright orange)
+    push: 600, // N pushed onto a loose body the beam is hitting (radiation pressure, tuned for fun)
+    heatPerSecond: 0.22, // laser heat gained while firing (≈4.5 s from cold to overheat)
+    coolPerSecond: 0.45, // laser heat lost while not firing
+    overheatCoolPerSecond: 0.4, // when overheated: locked out until it has cooled all the way down
   },
   gas: {
     stiffness: 900, // pressure -> flow acceleration (field units)

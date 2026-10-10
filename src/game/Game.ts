@@ -196,6 +196,7 @@ export class Game {
   private fixedStep(input: Input): void {
     const dt = FIXED_DT;
     this.ship.control(this.controls, dt);
+    this.ship.updateShield(dt);
     this.slots[0].fixedUpdate(dt, input.down('Mouse0'));
     this.slots[1].fixedUpdate(dt, input.down('Mouse2'));
     this.hazards.update(dt);

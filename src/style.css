@@ -226,3 +226,35 @@ canvas {
     opacity: 0.55;
   }
 }
+.hud-shield {
+  bottom: 32px;
+}
+.hud-stats {
+  bottom: 56px;
+}
+.hud-vel {
+  bottom: 60px;
+}
+.hud-heat {
+  position: absolute;
+  bottom: 62px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--hud-dim);
+  font-size: 11px;
+}
+.hud-heat-bar {
+  width: 150px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.hud-heat-fill {
+  height: 100%;
+  width: 0;
+}
+.hud-heat.overheated span {
+  color: #ff5a4d;
+  animation: blink 0.5s steps(2) infinite;
+}

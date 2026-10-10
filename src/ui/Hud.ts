@@ -19,6 +19,9 @@ export class Hud {
   private readonly root: HTMLDivElement;
   private readonly objective: HTMLDivElement;
   private readonly healthFill: HTMLDivElement;
+  private readonly shieldFill: HTMLDivElement;
+  private readonly heatFill: HTMLDivElement;
+  private readonly heatWrap: HTMLDivElement;
   private readonly stats: HTMLDivElement;
   private readonly tools: HTMLDivElement;
   private readonly banner: HTMLDivElement;
@@ -32,6 +35,10 @@ export class Hud {
     this.objective = el('div', 'hud-objective', this.root);
     const health = el('div', 'hud-health', this.root, '<span>HULL</span>');
     this.healthFill = el('div', 'hud-health-fill', el('div', 'hud-health-bar', health));
+    const shield = el('div', 'hud-health hud-shield', this.root, '<span>SHLD</span>');
+    this.shieldFill = el('div', 'hud-health-fill', el('div', 'hud-health-bar', shield));
+    this.heatWrap = el('div', 'hud-heat', this.root, '<span>LASER HEAT</span>');
+    this.heatFill = el('div', 'hud-heat-fill', el('div', 'hud-heat-bar', this.heatWrap));
     this.stats = el('div', 'hud-stats', this.root);
     const vel = el('div', 'hud-vel', this.root);
     this.velArrow = el('div', 'hud-vel-arrow', vel);
@@ -72,6 +79,12 @@ export class Hud {
     const hp = Math.max(0, game.ship.health / tune.ship.maxHealth);
     this.healthFill.style.width = `${hp * 100}%`;
     this.healthFill.style.background = hp > 0.5 ? '#5fe0a8' : hp > 0.25 ? '#ffc04d' : '#ff5a4d';
+    this.shieldFill.style.width = `${(game.ship.shield / tune.ship.shieldMax) * 100}%`;
+    this.shieldFill.style.background = '#6fd8ff';
+    const cut = game.cutter;
+    this.heatFill.style.width = `${cut.heat * 100}%`;
+    this.heatFill.style.background = cut.overheated ? '#ff5a4d' : cut.heat > 0.7 ? '#ffb24d' : '#ffd88a';
+    this.heatWrap.classList.toggle('overheated', cut.overheated);
 
     const v = game.ship.body.linvel();
     const speed = Math.hypot(v.x, v.y);

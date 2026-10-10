@@ -47,7 +47,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
   };
 
   await sleep(800);
-  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope'] : [mode];
+  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'laser', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope'] : [mode];
   for (const md of modes) {
     restart();
     await sleep(300);
@@ -420,7 +420,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         place(m(200), m(380), 0);
         gg.ship.body.setLinvel({ x: speed, y: 0 }, true);
         await sleep(Math.max(1200, (6 / speed) * 1000 + 600));
-        results[`${speed}mps`] = { hp: Math.round(gg.ship.health), impact: +gg.lastImpactSpeed.toFixed(1) };
+        results[`${speed}mps`] = { hp: Math.round(gg.ship.health), shield: Math.round(gg.ship.shield), impact: +gg.lastImpactSpeed.toFixed(1) };
       }
       log('crash', results);
       // tethered slam: harpoon a crate in open space, then ram it at speed (no exemption)
@@ -492,6 +492,45 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       }
       log('sentry', { alarmMs: Math.round(tAlarm), hpLost: Math.round(h0 - g.ship.health), cause: g.ship.deathCause });
     }
+    if (md === 'laser') {
+      const g = game();
+      // push: a crate in open space shoved by the beam
+      const crate = g.pixels.bodies.find((b) => !b.explosiveCells && !b.tags.salvage && b.body.mass() > 100)!;
+      crate.body.setTranslation({ x: 20, y: 80 }, true);
+      crate.body.setLinvel({ x: 0, y: 0 }, true);
+      crate.body.setAngvel(0, true);
+      place(36, 81, Math.PI);
+      await sleep(100);
+      await hold('Mouse0', 1500, () => {
+        place(36, 81, Math.PI);
+        aim(crate.body.worldCom().x, crate.body.worldCom().y);
+      });
+      const cv = crate.body.linvel();
+      log('laser push', { crateVx: +cv.x.toFixed(2), mass: Math.round(crate.body.mass()), heat: +g.cutter.heat.toFixed(2) });
+      // overheat: hold until it locks, then time the cooldown
+      await sleep(3000); // cool down first
+      const t0 = performance.now();
+      let tOver = -1;
+      input.simulateDown('Mouse0');
+      while (performance.now() - t0 < 8000) {
+        place(36, 81, Math.PI);
+        aim(10, 81);
+        if (g.cutter.overheated && tOver < 0) tOver = performance.now() - t0;
+        if (tOver > 0) break;
+        await sleep(16);
+      }
+      input.simulateUp('Mouse0');
+      const t1 = performance.now();
+      while (g.cutter.overheated && performance.now() - t1 < 6000) await sleep(16);
+      log('laser heat', { overheatAfterMs: Math.round(tOver), cooldownMs: Math.round(performance.now() - t1) });
+      // shield soaks damage, then recharges
+      g.ship.damage(30, 'test');
+      const after = { hull: Math.round(g.ship.health), shield: Math.round(g.ship.shield) };
+      g.ship.damage(50, 'test');
+      const after2 = { hull: Math.round(g.ship.health), shield: Math.round(g.ship.shield) };
+      await sleep(5500);
+      log('shield', { after30: after, after50more: after2, after5s: { hull: Math.round(g.ship.health), shield: Math.round(g.ship.shield) } });
+    }
     if (md === 'brake') {
       const g = game();
       await hold('KeyW', 700);
@@ -525,6 +564,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
           place(m(cx), m(585), -Math.PI / 2);
           aim(m(cx) + Math.sin(performance.now() / 120) * 0.4, m(520));
         });
+        await sleep(1400); // let the laser cool between cuts (heat meter)
       }
       await sleep(600);
       const roof = game().pixels.bodies.find((b) => b.grid.w > 60);

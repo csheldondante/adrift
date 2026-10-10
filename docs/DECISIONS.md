@@ -2,6 +2,14 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-09 — Laser push + heat meter, recharging shields
+
+The user asked: "The laser should also push things. The ship should have recharging shields. The laser should have limited use with a heat meter that has a cooldown if it fills up."
+
+- **Laser push:** while the beam hits a loose pixel body, 600 N is applied at the hit point along the beam ("radiation pressure", tuned for fun). The first try was 1400 N; it flung a partly cut crate at 17 m/s. Machines are kinematic and ignore it.
+- **Heat meter:** firing adds 0.22/s, so about 4.5 s from cold to overheat. Idling cools it at 0.45/s. Overheating locks the laser until it has cooled all the way to 0 (0.4/s, so about 2.5 s), with smoke at the nose and a blinking HUD bar. A lockout until fully cool, rather than until just below full, makes overheating a real cost. Cutting through thick hull now takes pacing: the roof-cut test pauses between cuts.
+- **Shields:** a 60-point pool soaks damage before the hull. Recharging starts 2.5 s after the last hit, at 20/s. A cyan bubble flashes when it soaks a hit and blips when full again. Crushing (infinite damage) bypasses it. With full shields, a 12 m/s crash (57 damage) costs no hull, which is intended: shields buy you one mistake.
+
 ## 2026-10-09 — Crash damage from physics; held debris is a cushion; visible sentries
 
 **User feedback:** "When grappling, if I hold reel in I avoid damage even if I link into something else … the winch speed [should be] slow and safe, but we still base damage on the physics speed." Then: "I do want the grappled item to not cause damage and to work as a shield. That is fun even if it isn't realistic … imagine the ship has arms to hold the debris close and use it as a cushion." And: "The turret doesn't seem to shoot and I don't see any sweeping vision cones."

@@ -56,7 +56,13 @@ export class Ship implements PhysOwner {
   readonly collider: Collider;
   readonly group = new THREE.Group();
   private readonly flame: THREE.Mesh;
+  private readonly bubble: THREE.Mesh;
+  private readonly bubbleMat: THREE.MeshBasicMaterial;
   health = tune.ship.maxHealth;
+  shield = tune.ship.shieldMax;
+  /** 0..1 visual pulse of the shield bubble (hits, recharge complete). */
+  shieldFlash = 0;
+  private sinceHit = 99;
   thrustLevel = 0;
   /** RCS braking this step, 0..1, and the drift direction it opposes (for jet visuals). */
   brake = 0;
@@ -102,7 +108,13 @@ export class Ship implements PhysOwner {
     this.flame = new THREE.Mesh(flameGeo, flameMat);
     this.flame.position.set(-1.35, 0, 0);
     this.flame.renderOrder = ORDER.ship - 1;
+    // shield bubble: invisible until it soaks a hit
+    this.bubbleMat = new THREE.MeshBasicMaterial({ color: 0x6fd8ff, transparent: true, opacity: 0, depthTest: false, depthWrite: false });
+    this.bubbleMat.blending = THREE.AdditiveBlending;
+    this.bubble = new THREE.Mesh(new THREE.RingGeometry(1.45, 1.75, 40), this.bubbleMat);
+    this.bubble.renderOrder = ORDER.ship + 1;
     this.group.add(sprite, this.flame);
+    this.group.add(this.bubble);
   }
 
   get x(): number {
@@ -159,12 +171,35 @@ export class Ship implements PhysOwner {
   /** What finished the ship off (for the death banner and tests). */
   deathCause = '';
 
+  /**
+   * Applies damage: the recharging shield soaks it first, the hull takes the rest. Infinite
+   * damage (crushing) bypasses the shield.
+   */
   damage(amount: number, cause = 'damage'): void {
-    if (!this.alive) return;
+    if (!this.alive || amount <= 0) return;
+    this.sinceHit = 0;
+    if (Number.isFinite(amount) && this.shield > 0) {
+      const soaked = Math.min(this.shield, amount);
+      this.shield -= soaked;
+      amount -= soaked;
+      this.shieldFlash = Math.min(1, this.shieldFlash + 0.25 + soaked / 30);
+      if (amount <= 0) return;
+    }
     this.health = Math.max(0, this.health - amount);
     if (this.health <= 0) {
       this.alive = false;
       this.deathCause = cause;
+    }
+  }
+
+  /** Shield recharge after a quiet period; call each physics step. */
+  updateShield(dt: number): void {
+    const s = tune.ship;
+    this.sinceHit += dt;
+    if (this.alive && this.sinceHit > s.shieldDelay && this.shield < s.shieldMax) {
+      const before = this.shield;
+      this.shield = Math.min(s.shieldMax, this.shield + s.shieldRegen * dt);
+      if (before < s.shieldMax && this.shield >= s.shieldMax) this.shieldFlash = Math.max(this.shieldFlash, 0.35); // "fully charged" blip
     }
   }
 
@@ -175,6 +210,9 @@ export class Ship implements PhysOwner {
     const thrust = Math.max(0, this.thrustLevel);
     this.flame.visible = this.alive && thrust > 0;
     this.flame.scale.set(0.6 + thrust * 0.9 + Math.sin(time * 60) * 0.12, 1 + Math.sin(time * 37) * 0.15, 1);
+    this.shieldFlash *= 0.9;
+    this.bubbleMat.opacity = this.shieldFlash * 0.8;
+    this.bubble.visible = this.shieldFlash > 0.02;
     this.group.visible = this.alive;
   }
 
