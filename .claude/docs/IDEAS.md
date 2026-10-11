@@ -110,6 +110,7 @@ These also feed sound by conduction: atmosphere is where you hear things through
 
 ## Known open threads in the current build
 
+- **Levels are bad** (user, 2026-10-11, playing the dark build): the lighting is fun, but the generated levels don't serve it yet. Probably needs colossal hand-shaped spaces, landmarks and puzzle rooms rather than dense room grids.
 - Sealed bulkheads stay sealed after an alarm ends.
 - The nav field is only rebuilt when an alarm starts.
 - Drones exist only during alarms.
