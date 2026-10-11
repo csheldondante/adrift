@@ -15,6 +15,8 @@ import { Physics, type Body } from '../physics/Physics';
 import { MAT_RGB } from '../pixel/materials';
 import type { PixelBody } from '../pixel/PixelBody';
 import { PixelWorld } from '../pixel/PixelWorld';
+import { rasterPixels, type InteriorMask } from '../pixel/lightRaster';
+import type { Light, Lighting } from '../render/Lighting';
 import { ORDER } from '../render/order';
 import { Particles } from '../render/Particles';
 import { PixelLayer } from '../render/PixelLayer';
@@ -22,6 +24,7 @@ import type { Stage } from '../render/Stage';
 import { Cutter } from './Cutter';
 import { Grapple } from './Grapple';
 import { Hazards } from './Hazards';
+import { Rng } from './level/rng';
 import type { LevelSpec } from './level/types';
 import { ExtractionObjective } from './Objective';
 import { Machinery } from './Machinery';
@@ -34,6 +37,13 @@ export interface AppServices {
   stage: Stage;
   field: GasField;
   input: Input;
+  lighting: Lighting;
+}
+
+/** A fixed light in the level (emergency lamps); flicker is per light. */
+interface FixedLight extends Light {
+  base: number;
+  phase: number;
 }
 
 const sample: FieldSample = { gas: 0, heat: 0, vx: 0, vy: 0 };
@@ -72,6 +82,10 @@ export class Game {
   lastImpactSpeed = 0;
   private debugLines: THREE.LineSegments | null = null;
   private readonly backWall: PixelLayer | null;
+  /** Back-wall coverage only (the rest of the backdrop grid is dropped), for interior ambient. */
+  private readonly interior: InteriorMask | null;
+  private readonly fixedLights: FixedLight[] = [];
+  private readonly flashes: { x: number; y: number; t: number }[] = [];
 
   constructor(
     private readonly app: AppServices,
@@ -100,8 +114,10 @@ export class Game {
     this.objective = new ExtractionObjective(level.extraction, salvage);
     this.machinery = new Machinery(this.pixels, this.fx, level.entities);
 
-    this.backWall = level.backdrop ? new PixelLayer(level.backdrop, ORDER.backWall, [0.3, 0.33, 0.42]) : null;
+    this.backWall = level.backdrop ? new PixelLayer(level.backdrop, ORDER.backWall, tune.light.enabled ? [0.62, 0.66, 0.78] : [0.3, 0.33, 0.42]) : null;
     if (this.backWall) this.root.add(this.backWall.object);
+    this.interior = level.backdrop ? { mat: level.backdrop.mat, w: level.backdrop.w, h: level.backdrop.h } : null;
+    this.placeFixedLights(level);
     this.root.add(this.objective.mesh, this.pixels.group, this.ship.group, this.particles.group, this.fx);
     stage.world.add(this.root);
 
@@ -137,6 +153,7 @@ export class Game {
     this.hazards.onExplode = (x, y) => {
       const d = Math.hypot(x - this.ship.x, y - this.ship.y);
       stage.shake(Math.max(0, 0.9 - d / 40));
+      this.flashes.push({ x, y, t: 0 });
     };
   }
 
@@ -160,6 +177,7 @@ export class Game {
     if (input.hit('Mouse2')) this.slots[1].press();
     if (input.released('Mouse0')) this.slots[0].release();
     if (input.released('Mouse2')) this.slots[1].release();
+    if (input.hit('KeyF')) this.ship.lampOn = !this.ship.lampOn;
     if (input.hit('KeyP')) tune.grapple.pivot = tune.grapple.pivot === 'com' ? 'nose' : 'com';
     const wheel = input.takeWheel();
     if (wheel) this.zoom = Math.max(16, Math.min(90, this.zoom * Math.pow(1.12, wheel)));
@@ -190,11 +208,99 @@ export class Game {
     field.mesh.visible = tune.debug.showField;
     this.updateDebugLines();
     this.updateCamera(dt);
+    this.updateLighting(dt);
+  }
+
+  /** Emergency lamps in a fraction of rooms: dim, warm, flickering pools in the dark. */
+  private placeFixedLights(level: LevelSpec): void {
+    const rng = new Rng(level.seed ^ 0x5eed);
+    for (const r of level.rooms) {
+      if (rng.next() > tune.light.roomLightChance) continue;
+      const red = rng.next() < 0.4;
+      const size = Math.max(r.x1 - r.x0, r.y1 - r.y0);
+      const base = 0.5 + rng.next() * 0.3;
+      this.fixedLights.push({
+        x: (r.x0 + r.x1) / 2 + (rng.next() - 0.5) * (r.x1 - r.x0) * 0.5,
+        y: r.y1 - 0.6,
+        dirX: 0,
+        dirY: -1,
+        cosHalf: -2,
+        range: Math.min(24, Math.max(9, size * 0.75)),
+        intensity: base,
+        base,
+        phase: rng.next() * 100,
+        r: 1,
+        g: red ? 0.22 : 0.55,
+        b: red ? 0.15 : 0.22,
+      });
+    }
+  }
+
+  /** How far sensors can see the ship: the lamp, the thruster and the cutter all give it away. */
+  private updateConspicuity(): void {
+    const sh = this.ship;
+    if (!tune.light.enabled || sh.lampOn) sh.conspicuity = 1;
+    else sh.conspicuity = Math.min(1, tune.light.darkVisibility + 0.35 * sh.thrustLevel + (this.cutter.firing ? 0.35 : 0));
+  }
+
+  private updateLighting(dt: number): void {
+    const { lighting, stage } = this.app;
+    const L = tune.light;
+    if (!L.enabled) {
+      lighting.disable();
+      return;
+    }
+    lighting.setAmbient(L.ambientInterior, L.ambientSpace);
+    const out = lighting.lights;
+    const sh = this.ship;
+    if (sh.alive) {
+      const ca = Math.cos(sh.angle);
+      const sa = Math.sin(sh.angle);
+      if (sh.lampOn) {
+        const n = sh.nose(v2);
+        out.push({ x: n.x, y: n.y, dirX: ca, dirY: sa, cosHalf: Math.cos(L.lampHalf), range: L.lampRange, intensity: L.lampIntensity, r: 1, g: 0.94, b: 0.82 });
+        out.push({ x: sh.x, y: sh.y, dirX: 0, dirY: 0, cosHalf: -2, range: 4.5, intensity: 0.4, r: 0.7, g: 0.8, b: 1 });
+      } else out.push({ x: sh.x, y: sh.y, dirX: 0, dirY: 0, cosHalf: -2, range: 2.2, intensity: 0.25, r: 0.5, g: 0.7, b: 1 }); // instrument glow
+      if (sh.thrustLevel > 0) out.push({ x: sh.x - ca * 1.8, y: sh.y - sa * 1.8, dirX: 0, dirY: 0, cosHalf: -2, range: 9, intensity: 1.1 * sh.thrustLevel, r: 1, g: 0.55, b: 0.2 });
+      if (this.cutter.firing) {
+        const e = this.cutter.beamEnd;
+        out.push({ x: e.x, y: e.y, dirX: 0, dirY: 0, cosHalf: -2, range: 7, intensity: 1.3, r: 1, g: 0.6, b: 0.3, skin: 0.3 });
+      }
+    }
+    for (let i = this.flashes.length - 1; i >= 0; i--) {
+      const f = this.flashes[i];
+      f.t += dt;
+      const k = 1 - f.t / 0.9;
+      if (k <= 0) {
+        this.flashes.splice(i, 1);
+        continue;
+      }
+      out.push({ x: f.x, y: f.y, dirX: 0, dirY: 0, cosHalf: -2, range: 26, intensity: 2.2 * k * k, r: 1, g: 0.62, b: 0.3, skin: 1 });
+    }
+    const s = this.salvage;
+    if (s.alive) {
+      const c = s.body.worldCom();
+      out.push({ x: c.x, y: c.y, dirX: 0, dirY: 0, cosHalf: -2, range: 14, intensity: 0.8 + 0.15 * Math.sin(this.time * 2.2), r: 0.3, g: 1, b: 0.95, skin: (Math.min(s.grid.w, s.grid.h) * CELL) / 2 });
+    }
+    const z = this.objective.zone;
+    out.push({ x: (z.x0 + z.x1) / 2, y: (z.y0 + z.y1) / 2, dirX: 0, dirY: 0, cosHalf: -2, range: Math.max(z.x1 - z.x0, z.y1 - z.y0) * 0.8, intensity: 0.45, r: 0.35, g: 1, b: 0.5 });
+    for (const f of this.fixedLights) {
+      // mostly steady with a slow wobble, and every so often a brief dropout
+      const t = this.time + f.phase;
+      const drop = Math.sin(t * 0.37) > 0.93 && Math.sin(t * 23) > -0.2 ? 0.15 : 1;
+      f.intensity = f.base * (0.85 + 0.15 * Math.sin(t * 3.1)) * drop;
+      out.push(f);
+    }
+    this.security.addLights(out);
+    const hw = stage.viewWidth / 2;
+    const hh = stage.viewHeight / 2;
+    lighting.update(stage.camX, stage.camY, hw, hh, (o, gw, gh, ox, oy, ts) => rasterPixels(this.pixels, this.interior, o, gw, gh, ox, oy, ts));
   }
 
   private fixedStep(input: Input): void {
     const dt = FIXED_DT;
     this.ship.control(this.controls, dt);
+    this.updateConspicuity();
     this.ship.updateShield(dt);
     this.slots[0].fixedUpdate(dt, input.down('Mouse0'));
     this.slots[1].fixedUpdate(dt, input.down('Mouse2'));

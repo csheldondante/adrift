@@ -65,6 +65,48 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       await sleep(700);
       await shot('overview2');
     }
+    if (md === 'dark') {
+      // lighting look: headlamp, lamp off, cutter glow, and the light pass cost
+      const g = game();
+      // inside the derelict: a free spot in a security bot's room, facing away from it
+      const grid = g.pixels.terrain.grid;
+      const roomy = (x: number, y: number) => {
+        for (let oy = -1.6; oy <= 1.6; oy += 0.4) for (let ox = -1.6; ox <= 1.6; ox += 0.4) if (grid.solid(Math.floor((x + ox) / CELL), Math.floor((y + oy) / CELL))) return false;
+        return true;
+      };
+      const bot = g.security.robots.find((r) => r.pb.tags.label === 'securityBot');
+      if (bot) {
+        const c = bot.pos;
+        for (let k = 0; k < 24; k++) {
+          const t = (k / 24) * Math.PI * 2;
+          const x = c.x + Math.cos(t) * 9;
+          const y = c.y + Math.sin(t) * 9;
+          if (roomy(x, y)) {
+            place(x, y, t);
+            break;
+          }
+        }
+      }
+      aim(g.ship.x + Math.cos(g.ship.angle) * 12, g.ship.y + Math.sin(g.ship.angle) * 12);
+      await sleep(700);
+      await shot('dark-lamp');
+      g.ship.lampOn = false;
+      await sleep(300);
+      await shot('dark-off');
+      g.ship.lampOn = true;
+      const s = g.ship;
+      aim(s.x + Math.cos(s.angle) * 12, s.y + Math.sin(s.angle) * 12);
+      const firing = hold('Mouse0', 1500);
+      await sleep(1100);
+      await shot('dark-cutter');
+      await firing;
+      const t0 = performance.now();
+      let frames = 0;
+      const f0 = (window as unknown as { __stats: { frames: number } }).__stats.frames;
+      await sleep(2000);
+      frames = (window as unknown as { __stats: { frames: number } }).__stats.frames - f0;
+      log(md, { fps: Math.round((frames * 1000) / (performance.now() - t0)), rasterMs: +(g as unknown as { app: { lighting: { rasterMs: number } } }).app.lighting.rasterMs.toFixed(2), conspicuity: g.ship.conspicuity });
+    }
     if (md === 'soak') {
       for (let i = 0; i < 8; i++) {
         const t = performance.now();
@@ -336,11 +378,13 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         health: Math.round(g.ship.health),
       });
     }
-    if (md === 'spot' || md === 'sneak') {
-      // in front of a security bot's eye: alarm. Behind it: no alarm.
+    if (md === 'spot' || md === 'sneak' || md === 'lit') {
+      // in front of a security bot's eye: alarm. Behind it, dark: no alarm. Behind it with the
+      // headlamp shining on it: it notices the light and turns (alarm).
       const g = game();
       const bot = g.security.robots.find((r) => r.pb.tags.label === 'securityBot')!;
       const front = md === 'spot';
+      g.ship.lampOn = md !== 'sneak';
       const t0 = performance.now();
       let tAlarm = -1;
       let maxSusp = 0;
@@ -366,6 +410,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         continue;
       }
       place(c.x + Math.cos(ang) * 7, c.y + Math.sin(ang) * 7, ang + Math.PI);
+      aim(c.x, c.y); // the ship steers to face the cursor: keep it on the bot
       while (performance.now() - t0 < 3000) {
         maxSusp = Math.max(maxSusp, g.security.suspicion);
         if (g.security.alert && tAlarm < 0) {

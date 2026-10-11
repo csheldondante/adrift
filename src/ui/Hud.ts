@@ -49,7 +49,7 @@ export class Hud {
       'div',
       'hud-help',
       this.root,
-      `<b>Mouse</b> aim (the ship turns to face it) · <b>Space</b> thrust<br>
+      `<b>Mouse</b> aim (the ship turns to face it) · <b>Space</b> thrust · <b>F</b> lamp (sensors see it)<br>
        <b>LMB</b> cutter · <b>RMB</b> harpoon · click again: let go · hold: winch in &amp; clamp on contact<br>
        <b>Q/E</b> reel in/out · 
 <b>P</b> rope pivot COM/nose · <b>Wheel</b> zoom · <b>R</b> restart · <b>H</b> hide help · <b>\`</b> debug panel`,
@@ -89,12 +89,13 @@ export class Hud {
     const v = game.ship.body.linvel();
     const speed = Math.hypot(v.x, v.y);
     const mass = game.ship.body.mass() + (game.grapple.targetObject?.kind === 'pixelBody' ? (game.grapple.targetObject as unknown as { body: { mass(): number } }).body.mass() : 0);
-    this.stats.innerHTML = `${speed.toFixed(1)} m/s<br><small>${Math.round(mass)} kg ${game.grapple.attached ? '(towing)' : ''}</small>`;
+    this.stats.innerHTML = `${speed.toFixed(1)} m/s<br><small>${Math.round(mass)} kg ${game.grapple.attached ? '(towing)' : ''}</small><br><small>lamp ${game.ship.lampOn ? 'on' : 'OFF · dark'} [F]</small>`;
     const ang = Math.atan2(v.y, v.x);
     this.velArrow.style.transform = `rotate(${-ang}rad) scaleX(${Math.min(1, speed / 15)})`;
     this.velArrow.style.opacity = speed > 0.2 ? '1' : '0.2';
 
-    this.tools.innerHTML = game.slots.map((s, i) => `<div><b>${i === 0 ? 'LMB' : 'RMB'}</b> ${s.name} <span>${s.status()}</span></div>`).join('');
+    this.tools.innerHTML =
+      game.slots.map((s, i) => `<div><b>${i === 0 ? 'LMB' : 'RMB'}</b> ${s.name} <span>${s.status()}</span></div>`).join('');
 
     if (obj.state === 'complete') this.showBanner('SALVAGE EXTRACTED', `${obj.completedAt.toFixed(1)} s — press R to run it again`, 'win');
     else if (!game.ship.alive) this.showBanner(game.ship.deathCause === 'crushed' ? 'CRUSHED' : 'SHIP DESTROYED', 'press R to restart', 'lose');

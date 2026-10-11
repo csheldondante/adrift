@@ -11,7 +11,7 @@ export class VisionCone {
   private readonly fill: THREE.Mesh;
   private readonly pos: Float32Array;
   private readonly mat: THREE.MeshBasicMaterial;
-  private readonly edges = [new Ribbon(0xffd27a, ORDER.particles, true), new Ribbon(0xffd27a, ORDER.particles, true)];
+  private readonly edges = [new Ribbon(0xffd27a, ORDER.glow, true), new Ribbon(0xffd27a, ORDER.glow, true)];
 
   constructor(readonly rays: number) {
     // center + rays+1 rim vertices, rays triangles
@@ -24,7 +24,7 @@ export class VisionCone {
     this.mat = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.12, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
     this.mat.blending = THREE.AdditiveBlending;
     this.fill = new THREE.Mesh(geo, this.mat);
-    this.fill.renderOrder = ORDER.particles - 1;
+    this.fill.renderOrder = ORDER.glow;
     this.fill.frustumCulled = false;
     this.mesh = new THREE.Group();
     this.mesh.add(this.fill, this.edges[0].mesh, this.edges[1].mesh);

@@ -19,6 +19,14 @@ export class Cutter implements Tool {
   private readonly core = new Ribbon(0xfff1d0, ORDER.fx + 1, true);
   private readonly glow = new Ribbon(0xff5a1e, ORDER.fx, true);
   private active = false;
+  /** Firing this step (beam on). */
+  get firing(): boolean {
+    return this.active;
+  }
+  /** Beam end point (world meters), valid while firing. */
+  get beamEnd(): { x: number; y: number } {
+    return { x: this.ex, y: this.ey };
+  }
   private sx = 0;
   private sy = 0;
   private ex = 0;

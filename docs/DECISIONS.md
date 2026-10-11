@@ -2,6 +2,30 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-11 — Darkness and light (branch `explore/dark-derelict`)
+
+The user wants to test a different direction: a colossal, empty, dark derelict that you explore with a light, repairing and reawakening it, with puzzles over firefights. This is a prototype on a branch; `main` keeps the lit action version. The first step is darkness plus light.
+
+- **Lightmap, not per-pixel shading.** A fixed 384×256 camera-centered grid. The CPU rasterizes occluders and emitters into it from the pixel grids, which are CPU-authoritative, so light and physics agree on what's solid. A compute pass adds ambient, emission with a little bloom, and every light with a shadow march. A full-view overlay multiplies the scene by the result. The texel size follows the zoom (at least 0.25 m), so the cost doesn't grow when zoomed out. The origin snaps to whole texels so shadows don't shimmer.
+  - Rejected: rendering occluders to a render target, which needs alpha tricks in the shared pixel material and a second scene pass. Also rejected: a GPU copy of the terrain, which would need syncing with CPU cuts.
+  - The raster was 6 ms in its first naive form. Material lookup tables, precomputed columns, and heat reads only when something is hot brought it to about 1.2 ms.
+- **2× multiply with pre-decoded output.** Blend = dst·src + src·dst, so light up to 2 can brighten dark surfaces. The canvas output is sRGB-encoded before blending, so the overlay writes sRGB⁻¹(light/2). That makes the final factor equal the light value, and the tuning numbers mean what they say.
+- **Emissive things draw after the overlay** (`ORDER.glow`): sparks, fire, the thruster flame, the shield bubble, sensor cones. They read as light sources and aren't darkened.
+- **Ambient:**
+  - Starlight in open space.
+  - Near-dark over the back wall, which marks the interior.
+  - Solid matter gets starlight only on its outer skin, within about 1 m of open space. Without that, the hull's whole mass glowed at starlight level, because the back wall doesn't extend under walls.
+  - The back wall's base tint was raised from 0.3 to 0.62, because darkness now comes from lighting. Lit rooms would otherwise stay black.
+- **Fixtures are unpowered.** LIGHT cells don't emit; restoring a section is meant to switch them on. Emergency lamps (a seeded 35% of rooms) are dim flickering point lights. The core glows cyan as a beacon, and the extraction zone glows green.
+- **Light is visible to sensors.** Sensors emit their own light, so bot and turret cones light the room.
+  - **Lamp shining on a sensor:** the sensor notices. Suspicion builds at about half the rate of seeing you, and the sensor turns to look, which usually turns into seeing you.
+  - **Lamp off:** sensor range drops to 30% (`light.darkVisibility`). Thrusting and cutting each add 35% back.
+  - Tests:
+    - `sneak`: dark, behind the bot → no alarm.
+    - `lit`: lamp on the bot from behind → alarm in about 1 s on seed 3.
+    - `spot`: unchanged.
+- **TSL gotcha:** nested `Loop`s both declare `i` unless named. Expressions built from the outer counter get inlined into the inner loop and read the inner one. No error is raised; the symptom was light passing through walls. Loops are now named, and per-light values are pinned with `toVar()`.
+
 ## 2026-10-10 — Aim steering: the ship faces the cursor; Space thrusts
 
 The user wanted "a minor change with a major impact": the ship always accelerates itself to turn toward the cursor, with no A/D or S, and thrust on Space.

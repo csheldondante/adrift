@@ -102,6 +102,16 @@ export const tune = {
   physics: {
     solverIterations: 8, // applied on restart; more = stiffer joints/rope, more CPU
   },
+  light: {
+    enabled: true, // darkness + lightmap overlay
+    lampRange: 30, // m, ship headlamp
+    lampHalf: 0.42, // rad half-angle of the headlamp cone
+    lampIntensity: 2.2,
+    ambientInterior: 0.16, // light level inside the derelict (over the back wall)
+    ambientSpace: 0.75, // starlight in open space
+    darkVisibility: 0.3, // sensor range multiplier when the lamp is off and you are quiet
+    roomLightChance: 0.35, // fraction of rooms with a flickering emergency light
+  },
   debug: {
     showColliders: false,
     showField: true,

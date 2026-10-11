@@ -14,6 +14,7 @@ import type { PixelBody } from '../../pixel/PixelBody';
 import { PixelGrid } from '../../pixel/PixelGrid';
 import { VisionCone } from '../../render/VisionCone';
 import type { P } from '../level/types';
+import type { Light } from '../../render/Lighting';
 import type { Security } from './Security';
 
 const tmp = { x: 0, y: 0 };
@@ -118,6 +119,8 @@ export abstract class Robot {
 
   abstract update(dt: number): void;
   frameUpdate(): void {}
+  /** Lights this robot emits (sensor beams, running lights). */
+  addLights(_out: Light[]): void {}
   dispose(): void {}
 }
 
@@ -154,13 +157,16 @@ export class SecurityBot extends Robot {
     const eye = this.eye({ x: 0, y: 0 });
     const look = this.lookAngle();
     const seeing = ship.alive && sec.canSee(eye.x, eye.y, look, SecurityBot.HALF, SecurityBot.RANGE, this.pb);
+    // the headlamp shining on the bot gives you away even from outside its cone
+    const lit = !seeing && this.state !== 'hunt' && sec.litByLamp(eye.x, eye.y, this.pb);
     const toShip = Math.atan2(ship.y - me.y, ship.x - me.x);
     const dShip = Math.hypot(ship.x - me.x, ship.y - me.y);
 
     if (this.state !== 'hunt') {
-      if (seeing) {
-        // ~0.6 s to alarm point-blank, ~2 s at the edge of the cone: time to break line of sight
-        this.suspicion = Math.min(1, this.suspicion + dt * (0.5 + 1.2 * (1 - dShip / SecurityBot.RANGE)));
+      if (seeing || lit) {
+        // ~0.6 s to alarm point-blank, ~2 s at the edge of the cone: time to break line of sight.
+        // Being lit is slower (~2.2 s): it turns to look, which usually turns into seeing.
+        this.suspicion = Math.min(1, this.suspicion + dt * (seeing ? 0.5 + 1.2 * Math.max(0, 1 - dShip / SecurityBot.RANGE) : 0.45));
         this.heading = toShip;
         if (this.suspicion >= 1) {
           sec.raiseAlarm({ x: ship.x, y: ship.y });
@@ -199,7 +205,7 @@ export class SecurityBot extends Robot {
       const dir = this.state === 'return' && d > 12 ? sec.nav.direction(me.x, me.y, tmp) : null;
       if (dir) this.steer(dir.x * sp, dir.y * sp, 4, dt);
       else this.steer((dx / (d || 1)) * sp, (dy / (d || 1)) * sp, 4, dt);
-      if (!seeing) this.heading = Math.atan2(dy, dx) + Math.sin(this.t * 1.3) * 0.55; // sweep while walking
+      if (!seeing && !lit) this.heading = Math.atan2(dy, dx) + Math.sin(this.t * 1.3) * 0.55; // sweep while walking
     }
     this.face(dt);
   }
@@ -219,6 +225,15 @@ export class SecurityBot extends Robot {
     const color = hunting ? 0xff3b30 : this.suspicion > 0.05 ? 0xff9a3a : 0xffd27a;
     const opacity = hunting ? 0.12 : 0.1 + this.suspicion * 0.1;
     this.cone.set(eye.x, eye.y, look, SecurityBot.HALF, this.lengths, color, opacity);
+  }
+
+  addLights(out: Light[]): void {
+    if (!this.alive) return;
+    const eye = this.eye({ x: 0, y: 0 });
+    const look = this.lookAngle();
+    const hunting = this.state === 'hunt';
+    const warm = this.suspicion > 0.05;
+    out.push({ x: eye.x, y: eye.y, dirX: Math.cos(look), dirY: Math.sin(look), cosHalf: Math.cos(SecurityBot.HALF), range: SecurityBot.RANGE, intensity: 0.55, r: 1, g: hunting ? 0.25 : warm ? 0.55 : 0.8, b: hunting ? 0.2 : warm ? 0.25 : 0.45, skin: 0.3 });
   }
 
   dispose(): void {
@@ -277,5 +292,10 @@ export class Drone extends Robot {
     }
     this.face(dt, 6, 40);
   }
-}
 
+  addLights(out: Light[]): void {
+    if (!this.alive) return;
+    const c = this.pos;
+    out.push({ x: c.x, y: c.y, dirX: 1, dirY: 0, cosHalf: -2, range: 6, intensity: 0.7, r: 1, g: 0.2, b: 0.35, skin: 0.8 });
+  }
+}

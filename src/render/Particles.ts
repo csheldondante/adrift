@@ -149,7 +149,7 @@ class Pool {
 export class Particles {
   readonly group = new THREE.Group();
   private readonly solid = new Pool(false, ORDER.particles);
-  private readonly glow = new Pool(true, ORDER.particles + 1);
+  private readonly glow = new Pool(true, ORDER.glow);
   private readonly s: FieldSample = { gas: 0, heat: 0, vx: 0, vy: 0 };
 
   constructor() {

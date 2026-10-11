@@ -13,10 +13,11 @@
 // Likely growth: alarm zones/levels (local vs ship-wide), noise (explosions draw attention),
 // disabling security by cutting power conduits or destroying a security core.
 
-import { CELL } from '../../config';
+import { CELL, tune } from '../../config';
 import { M } from '../../pixel/materials';
 import type { PixelBody } from '../../pixel/PixelBody';
 import type { DoorSpec, EntitySpec, P } from '../level/types';
+import type { Light } from '../../render/Lighting';
 import type { Projectiles } from '../Projectiles';
 import type { GameContext } from '../types';
 import { NavField } from './NavField';
@@ -106,6 +107,7 @@ export class Security {
   /** Is the ship visible from (x, y) within a cone (angle ± half) and range? Matter blocks sight. */
   canSee(x: number, y: number, angle: number, half: number, range: number, self?: PixelBody): boolean {
     const ship = this.ctx.ship;
+    range *= ship.conspicuity; // dark and quiet ships are seen only up close
     const dx = ship.x - x;
     const dy = ship.y - y;
     const d = Math.hypot(dx, dy);
@@ -113,6 +115,26 @@ export class Security {
     const a = Math.atan2(dy, dx);
     if (Math.abs(Math.atan2(Math.sin(a - angle), Math.cos(a - angle))) > half) return false;
     return !this.ctx.pixels.raycast(x, y, dx / d, dy / d, Math.max(0, d - 1.0), self);
+  }
+
+  /** Is (x, y) inside the ship's headlamp beam with a clear line to it? The light gives you away. */
+  litByLamp(x: number, y: number, self?: PixelBody): boolean {
+    const ship = this.ctx.ship;
+    const L = tune.light;
+    if (!ship.alive || !ship.lampOn || !L.enabled) return false;
+    const dx = x - ship.x;
+    const dy = y - ship.y;
+    const d = Math.hypot(dx, dy);
+    if (d > L.lampRange || d < 1e-3) return false;
+    const a = Math.atan2(dy, dx) - ship.angle;
+    if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) > L.lampHalf) return false;
+    return !this.ctx.pixels.raycast(ship.x, ship.y, dx / d, dy / d, Math.max(0, d - 1.0), self);
+  }
+
+  /** Sensor beams and running lights. */
+  addLights(out: Light[]): void {
+    for (const r of this.robots) r.addLights(out);
+    for (const t of this.turrets) t.addLights(out);
   }
 
   /** Distance along a ray until matter, capped at max (vision cone clipping). */

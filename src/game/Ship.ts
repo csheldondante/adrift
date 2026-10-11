@@ -70,6 +70,10 @@ export class Ship implements PhysOwner {
   brakeDirY = 0;
   turnInput = 0;
   alive = true;
+  /** Headlamp on (F). You need it to see; sensors can see it too. */
+  lampOn = true;
+  /** 0..1 how noticeable the ship is to sensors (range multiplier), set by the game each step. */
+  conspicuity = 1;
 
   /** Ship-local nose position in meters (+x forward). */
   static readonly NOSE = { x: 0.95, y: 0 };
@@ -107,12 +111,12 @@ export class Ship implements PhysOwner {
     flameGeo.translate(-0.5, 0, 0);
     this.flame = new THREE.Mesh(flameGeo, flameMat);
     this.flame.position.set(-1.35, 0, 0);
-    this.flame.renderOrder = ORDER.ship - 1;
+    this.flame.renderOrder = ORDER.glow;
     // shield bubble: invisible until it soaks a hit
     this.bubbleMat = new THREE.MeshBasicMaterial({ color: 0x6fd8ff, transparent: true, opacity: 0, depthTest: false, depthWrite: false });
     this.bubbleMat.blending = THREE.AdditiveBlending;
     this.bubble = new THREE.Mesh(new THREE.RingGeometry(1.45, 1.75, 40), this.bubbleMat);
-    this.bubble.renderOrder = ORDER.ship + 1;
+    this.bubble.renderOrder = ORDER.glow;
     this.group.add(sprite, this.flame);
     this.group.add(this.bubble);
   }

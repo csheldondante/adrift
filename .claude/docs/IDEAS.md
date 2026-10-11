@@ -13,7 +13,9 @@ Built decisions and their rationale live in `docs/DECISIONS.md`. This file is fo
 
 ## Direction: the colossal dark derelict (2026-10-11)
 
-**Status:** idea. The proposed plan is to prototype it on a branch (`explore/dark-derelict`) and keep `main` as the current action version.
+**Status:** exploring on branch `explore/dark-derelict`, which is a prototype.
+- Built: darkness, shadowed lighting, headlamp (F), emergency lamps, sensors that emit light and notice the lamp. See DECISIONS 2026-10-11.
+- Next: hull-walking, then a first repair puzzle.
 
 The ruined ship is colossal, empty and dark. Your ship carries a light to explore by. You repair things, avoid sensors and security, and gradually reawaken parts of the ship. Progress is puzzle-driven, and the goal is to reach the artifacts.
 
@@ -33,7 +35,9 @@ The ruined ship is colossal, empty and dark. Your ship carries a light to explor
 
 ## Hull-walking with a reorienting camera (2026-10-11)
 
-**Status:** idea.
+**Status:** idea; next on the branch.
+
+Proposed controls: **E** attaches to the hull when you're near it, and **Space** detaches with a push-off. E is currently "reel out", so reel moves elsewhere.
 
 The ship can attach to the hull and walk around it. Once attached, the camera rotates so the surface you're on is "down".
 
@@ -75,10 +79,24 @@ There's no air in most of the derelict, so sound is mostly physical. The player 
 
 **Status:** mostly built; these are the remaining ideas.
 
+- Attach to detritus and use it as a visual or physical shield. *Built:* clamp plus the held-debris cushion. Visual cover could also matter in the dark: a held slab blocks sensor sight lines.
+- Tow detritus, then release so it flies on into things and knocks them out of the way. *Works physically* (release keeps momentum); worth a level that asks for it.
+
 - Round corners with the tether; slingshot.
 - Grab hazards or explosives and whip them into enemies or obstacles.
 - Shoot out a door's bolts, then pull the door off its hinges.
 - Winch close, clamp, and use the held object as a shield or battering ram. *Built.*
+
+## More pressurized air sources (2026-10-11)
+
+**Status:** idea.
+
+The user wants more of them. Options:
+- Pressurized rooms in the generated dungeon (currently only the classic level has one).
+- Air tanks and canisters as props. Cutting one gives a jet, or a thrust source if you tow it.
+- Burst pipes along corridors that blow gusts.
+
+These also feed sound by conduction: atmosphere is where you hear things through the air.
 
 ## Firefight modes (from the design brief)
 

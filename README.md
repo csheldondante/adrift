@@ -31,6 +31,7 @@ The top-left minimap reveals the ship as you explore. It always shows you (white
 | --- | --- |
 | Mouse | Aim: the ship always turns to face the cursor |
 | Space | Thrust forward |
+| F | Headlamp on/off (you need it to see; sensors can see it too) |
 | Left mouse (hold) | Cutter laser (pushes loose things; watch the heat meter, overheating locks it until cool) |
 | Right mouse | Fire harpoon; click again to let go; hold to winch in (clamps on contact) |
 | Q / E | Reel in / out (E pays out slack) |

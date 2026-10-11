@@ -7,6 +7,7 @@ import { Input } from './core/Input';
 import { GasField } from './fields/GasField';
 import { initPhysics } from './physics/Physics';
 import { Background } from './render/Background';
+import { Lighting } from './render/Lighting';
 import { ORDER } from './render/order';
 import { Stage } from './render/Stage';
 import { Game } from './game/Game';
@@ -36,7 +37,9 @@ async function boot(): Promise<void> {
   stage.scene.add(field.mesh);
   const hud = new Hud(container);
   const minimap = new Minimap(container);
-  const app = { stage, field, input };
+  const lighting = new Lighting(stage.renderer);
+  stage.scene.add(lighting.mesh);
+  const app = { stage, field, input, lighting };
 
   // ?level=classic for the original small derelict (autotests default to it), else a
   // generated dungeon; ?seed=N pins the generator, otherwise each run gets a new ship

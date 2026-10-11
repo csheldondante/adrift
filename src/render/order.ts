@@ -12,6 +12,8 @@ export const ORDER = {
   bodies: 10,
   ship: 20,
   particles: 30,
+  light: 35, // darkness overlay: multiplies everything drawn before it by the lightmap
+  glow: 36, // emissive things drawn after the overlay (sparks, flames, sensor cones)
   field: 40,
   fx: 50,
   debug: 60,

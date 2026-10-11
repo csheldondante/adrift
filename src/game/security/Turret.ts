@@ -8,6 +8,7 @@
 
 import { CELL } from '../../config';
 import { M } from '../../pixel/materials';
+import type { Light } from '../../render/Lighting';
 import { ORDER } from '../../render/order';
 import { Ribbon } from '../../render/Ribbon';
 import { VisionCone } from '../../render/VisionCone';
@@ -80,8 +81,9 @@ export class Turret {
       this.sweepT += dt;
       want = this.dir + Math.sin(this.sweepT * 0.7) * ARC * 0.9;
       const seen = ship.alive && sec.canSee(m.x, m.y, this.aim, SCAN_HALF, RANGE);
-      if (seen) {
-        this.suspicion = Math.min(1, this.suspicion + dt * 1.6);
+      const lit = !seen && sec.litByLamp(m.x, m.y);
+      if (seen || lit) {
+        this.suspicion = Math.min(1, this.suspicion + dt * (seen ? 1.6 : 0.8));
         want = Math.atan2(ship.y - this.y, ship.x - this.x); // lock on while it decides
         if (this.suspicion >= 1) sec.raiseAlarm({ x: ship.x, y: ship.y });
       } else this.suspicion = Math.max(0, this.suspicion - dt * 0.5);
@@ -113,6 +115,13 @@ export class Turret {
     want = this.dir + Math.max(-ARC, Math.min(ARC, off));
     const err = Math.atan2(Math.sin(want - this.aim), Math.cos(want - this.aim));
     this.aim += Math.max(-2.2 * dt, Math.min(2.2 * dt, err));
+  }
+
+  addLights(out: Light[]): void {
+    if (!this.alive) return;
+    const m = this.muzzle();
+    const active = this.sec.alert;
+    out.push({ x: m.x, y: m.y, dirX: Math.cos(this.aim), dirY: Math.sin(this.aim), cosHalf: Math.cos(SCAN_HALF), range: RANGE, intensity: 0.8, r: active ? 1 : 0.55, g: active ? 0.25 : 0.85, b: active ? 0.2 : 1 });
   }
 
   frameUpdate(): void {

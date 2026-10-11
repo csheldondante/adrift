@@ -38,6 +38,11 @@ export abstract class PixelObject implements PhysOwner {
     for (let i = 0; i < grid.heat.length; i++) if (grid.heat[i] > 0) this.hot.add(i);
   }
 
+  /** Number of cells currently glowing with heat. */
+  get hotCount(): number {
+    return this.hot.size;
+  }
+
   /** Adds visual heat in a circle (local cell units). Works on any solid material. */
   heatCircle(cx: number, cy: number, r: number, amount: number): void {
     const g = this.grid;
