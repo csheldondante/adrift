@@ -12,6 +12,8 @@ export class Stage {
   viewHeight = 36; // meters visible vertically
   camX = 0;
   camY = 0;
+  /** Camera roll (radians): the world appears rotated by -roll. */
+  roll = 0;
   private shakeAmp = 0;
   private shakeT = 0;
 
@@ -55,9 +57,11 @@ export class Stage {
     this.shakeAmp = Math.min(1.5, this.shakeAmp + amount);
   }
 
-  setView(x: number, y: number, viewHeight: number, dt: number): void {
+  setView(x: number, y: number, viewHeight: number, dt: number, roll = 0): void {
     this.camX = x;
     this.camY = y;
+    this.roll = roll;
+    this.camera.rotation.z = roll;
     if (viewHeight !== this.viewHeight) {
       this.viewHeight = viewHeight;
       this.updateProjection();
@@ -70,14 +74,33 @@ export class Stage {
   }
 
   screenToWorld(px: number, py: number, out: { x: number; y: number }): { x: number; y: number } {
-    out.x = this.camX + (px / window.innerWidth - 0.5) * this.viewWidth;
-    out.y = this.camY - (py / window.innerHeight - 0.5) * this.viewHeight;
+    const lx = (px / window.innerWidth - 0.5) * this.viewWidth;
+    const ly = -(py / window.innerHeight - 0.5) * this.viewHeight;
+    const c = Math.cos(this.roll);
+    const s = Math.sin(this.roll);
+    out.x = this.camX + lx * c - ly * s;
+    out.y = this.camY + lx * s + ly * c;
     return out;
   }
 
   worldToScreen(wx: number, wy: number, out: { x: number; y: number }): { x: number; y: number } {
-    out.x = ((wx - this.camX) / this.viewWidth + 0.5) * window.innerWidth;
-    out.y = (0.5 - (wy - this.camY) / this.viewHeight) * window.innerHeight;
+    const dx = wx - this.camX;
+    const dy = wy - this.camY;
+    const c = Math.cos(this.roll);
+    const s = Math.sin(this.roll);
+    out.x = ((dx * c + dy * s) / this.viewWidth + 0.5) * window.innerWidth;
+    out.y = (0.5 - (-dx * s + dy * c) / this.viewHeight) * window.innerHeight;
+    return out;
+  }
+
+  /** Half extents of the world-axis-aligned box around the (rolled) view. */
+  viewBounds(out: { x: number; y: number }): { x: number; y: number } {
+    const c = Math.abs(Math.cos(this.roll));
+    const s = Math.abs(Math.sin(this.roll));
+    const hw = this.viewWidth / 2;
+    const hh = this.viewHeight / 2;
+    out.x = hw * c + hh * s;
+    out.y = hw * s + hh * c;
     return out;
   }
 

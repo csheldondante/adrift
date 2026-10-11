@@ -167,9 +167,26 @@ export class Ship implements PhysOwner {
     const p = this.body.translation();
     const dx = c.aimX - p.x;
     const dy = c.aimY - p.y;
+    if (dx * dx + dy * dy > 1.5 * 1.5) this.steerTo(Math.atan2(dy, dx), dt);
+    else this.steerByError(null, dt);
+  }
+
+  /** Turns toward a world angle with the stopping-aware rate controller (also used by hull-walking). */
+  steerTo(angle: number, dt: number): void {
+    const a = this.body.rotation();
+    this.steerByError(Math.atan2(Math.sin(angle - a), Math.cos(angle - a)), dt);
+  }
+
+  /** Not thrusting or braking (e.g. while the feet hold a surface). */
+  idleEngines(): void {
+    this.thrustLevel = 0;
+    this.brake = 0;
+  }
+
+  private steerByError(err: number | null, dt: number): void {
+    const s = tune.ship;
     let wantW = 0;
-    if (dx * dx + dy * dy > 1.5 * 1.5) {
-      const err = Math.atan2(Math.sin(Math.atan2(dy, dx) - a), Math.cos(Math.atan2(dy, dx) - a));
+    if (err !== null) {
       const mag = Math.min(s.turnRate, Math.sqrt(2 * s.turnAccel * Math.abs(err)) * 0.85, Math.abs(err) * 14);
       wantW = Math.sign(err) * mag;
     }

@@ -102,6 +102,21 @@ export const tune = {
   physics: {
     solverIterations: 8, // applied on restart; more = stiffer joints/rope, more CPU
   },
+  walk: {
+    reach: 2.8, // m from the surface at which E can clamp on
+    standoff: 1.05, // m from ship center to the surface while walking
+    stiffness: 8, // 1/s: standoff error -> normal speed
+    landSpeed: 4, // m/s max approach/retreat speed of the feet
+    footAccel: 60, // m/s² grip (normal hold, and braking when idle)
+    accel: 25, // m/s² walking acceleration
+    speed: 5, // m/s walking speed
+    pushOff: 5, // m/s kick away from the surface on Space
+    normalSmoothing: 10, // 1/s surface-normal smoothing
+  },
+  camera: {
+    roll: true, // camera turns so the surface you walk on is down (keeps its angle after you let go)
+    rollRate: 3, // 1/s
+  },
   light: {
     enabled: true, // darkness + lightmap overlay
     lampRange: 30, // m, ship headlamp

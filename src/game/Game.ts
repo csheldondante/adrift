@@ -24,6 +24,7 @@ import type { Stage } from '../render/Stage';
 import { Cutter } from './Cutter';
 import { Grapple } from './Grapple';
 import { Hazards } from './Hazards';
+import { HullWalk } from './HullWalk';
 import { Rng } from './level/rng';
 import type { LevelSpec } from './level/types';
 import { ExtractionObjective } from './Objective';
@@ -61,7 +62,10 @@ export class Game {
   readonly security: Security;
   readonly cutter: Cutter;
   readonly grapple: Grapple;
-  readonly controls: Controls = { thrust: 0, reel: 0, aimX: 0, aimY: 0 };
+  readonly controls: Controls = { thrust: 0, reel: 0, move: 0, aimX: 0, aimY: 0 };
+  readonly walk: HullWalk;
+  /** Camera roll (radians); follows the surface while hull-walking and keeps its angle after. */
+  private roll = 0;
   readonly ctx: GameContext;
   /** Tool slots: [0] = left mouse, [1] = right mouse. Swap entries to rebind. */
   readonly slots: Tool[];
@@ -138,6 +142,7 @@ export class Game {
     this.cutter = new Cutter(this.ctx);
     this.grapple = new Grapple(this.ctx);
     this.slots = [this.cutter, this.grapple];
+    this.walk = new HullWalk(this.ctx);
 
     this.pixels.events = {
       cellDestroyed: (x, y, mat, shade, vx, vy) => {
@@ -169,7 +174,14 @@ export class Game {
     // controls
     const c = this.controls;
     c.thrust = input.down('Space') ? 1 : 0;
-    c.reel = (input.down('KeyE') ? 1 : 0) - (input.down('KeyQ') ? 1 : 0);
+    c.reel = input.down('KeyQ') ? 1 : 0; // pay out slack (holding RMB winches in)
+    c.move = (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
+    // E clamps onto the nearest surface (or lets go); Space kicks off it
+    if (input.hit('KeyE')) {
+      if (this.walk.attached) this.walk.detach();
+      else this.walk.tryAttach();
+    }
+    if (this.walk.attached && input.hit('Space')) this.walk.detach(true);
     stage.screenToWorld(input.mouseX, input.mouseY, v2);
     c.aimX = v2.x;
     c.aimY = v2.y;
@@ -292,14 +304,16 @@ export class Game {
       out.push(f);
     }
     this.security.addLights(out);
-    const hw = stage.viewWidth / 2;
-    const hh = stage.viewHeight / 2;
-    lighting.update(stage.camX, stage.camY, hw, hh, (o, gw, gh, ox, oy, ts) => rasterPixels(this.pixels, this.interior, o, gw, gh, ox, oy, ts));
+    const vb = stage.viewBounds(v2);
+    lighting.update(stage.camX, stage.camY, vb.x, vb.y, (o, gw, gh, ox, oy, ts) => rasterPixels(this.pixels, this.interior, o, gw, gh, ox, oy, ts));
   }
 
   private fixedStep(input: Input): void {
     const dt = FIXED_DT;
-    this.ship.control(this.controls, dt);
+    if (this.walk.attached) {
+      this.ship.idleEngines();
+      this.walk.fixedUpdate(dt, this.controls.move);
+    } else this.ship.control(this.controls, dt);
     this.updateConspicuity();
     this.ship.updateShield(dt);
     this.slots[0].fixedUpdate(dt, input.down('Mouse0'));
@@ -411,6 +425,7 @@ export class Game {
     if (!this.ship.alive && !this.deathHandled) {
       this.deathHandled = true;
       this.grapple.detach();
+      this.walk.detach();
       this.hazards.trigger(this.ship.x, this.ship.y, 0);
     }
   }
@@ -466,9 +481,17 @@ export class Game {
     const k = this.debugCamera ? 1 : 1 - Math.exp(-dt * 4);
     this.camX += (tx - this.camX) * k;
     this.camY += (ty - this.camY) * k;
-    this.app.stage.setView(this.camX, this.camY, this.zoom, dt);
+    // roll so the walked-on surface is down; after letting go the camera keeps its angle
+    // (there is no up in space)
+    if (this.walk.attached && tune.camera.roll) {
+      const target = Math.atan2(this.walk.ny, this.walk.nx) - Math.PI / 2;
+      const err = Math.atan2(Math.sin(target - this.roll), Math.cos(target - this.roll));
+      this.roll += err * (1 - Math.exp(-dt * tune.camera.rollRate));
+    } else if (!tune.camera.roll) this.roll = 0;
+    this.app.stage.setView(this.camX, this.camY, this.zoom, dt, this.roll);
     // gas/heat readback band: the view plus a margin (CPU coupling only matters near the player)
-    this.app.field.setFocus(this.camY - this.zoom / 2 - 25, this.camY + this.zoom / 2 + 25);
+    const vb = this.app.stage.viewBounds(v2);
+    this.app.field.setFocus(this.camY - vb.y - 25, this.camY + vb.y + 25);
   }
 
   private updateDebugLines(): void {

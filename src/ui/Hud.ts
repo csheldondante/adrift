@@ -51,7 +51,7 @@ export class Hud {
       this.root,
       `<b>Mouse</b> aim (the ship turns to face it) · <b>Space</b> thrust · <b>F</b> lamp (sensors see it)<br>
        <b>LMB</b> cutter · <b>RMB</b> harpoon · click again: let go · hold: winch in &amp; clamp on contact<br>
-       <b>Q/E</b> reel in/out · 
+       <b>E</b> clamp to hull / let go · <b>A/D</b> walk · <b>Space</b> push off · <b>Q</b> pay out tether · 
 <b>P</b> rope pivot COM/nose · <b>Wheel</b> zoom · <b>R</b> restart · <b>H</b> hide help · <b>\`</b> debug panel`,
     );
     this.markers = [

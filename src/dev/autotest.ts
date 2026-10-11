@@ -47,7 +47,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
   };
 
   await sleep(800);
-  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'laser', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope'] : [mode];
+  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'laser', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope', 'walk'] : [mode];
   for (const md of modes) {
     restart();
     await sleep(300);
@@ -64,6 +64,80 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       await shot('overview');
       await sleep(700);
       await shot('overview2');
+    }
+    if (md === 'walk') {
+      // clamp onto a wall, walk along it (wrapping corners), check standoff and camera roll,
+      // then push off
+      const g = game();
+      const grid = g.pixels.terrain.grid;
+      const roomy = (x: number, y: number) => {
+        for (let oy = -1.6; oy <= 1.6; oy += 0.4) for (let ox = -1.6; ox <= 1.6; ox += 0.4) if (grid.solid(Math.floor((x + ox) / CELL), Math.floor((y + oy) / CELL))) return false;
+        return true;
+      };
+      // the derelict's outer hull, 2 m off it on the line from the spawn point to the level center
+      const ctr = (window as unknown as { __level: { center: { x: number; y: number } } }).__level.center;
+      const sx = g.ship.x;
+      const sy = g.ship.y;
+      const dl = Math.hypot(ctr.x - sx, ctr.y - sy);
+      const ux = (ctr.x - sx) / dl;
+      const uy = (ctr.y - sy) / dl;
+      const hull = g.pixels.raycast(sx, sy, ux, uy, dl);
+      let spot: { x: number; y: number } | null = hull ? { x: hull.x - ux * 2, y: hull.y - uy * 2 } : null;
+      if (spot && !roomy(spot.x, spot.y)) spot = null;
+      if (!spot) {
+        log(md, { skipped: 'no wall found' });
+        continue;
+      }
+      place(spot.x, spot.y, Math.atan2(uy, ux) + Math.PI / 2);
+      aim(spot.x - uy * 10, spot.y + ux * 10);
+      await sleep(100);
+      input.simulateDown('KeyE');
+      await sleep(40);
+      input.simulateUp('KeyE');
+      await sleep(900);
+      const w = g.walk;
+      const landed = { attached: w.attached, gap: +w.gap.toFixed(2), normal: [+w.nx.toFixed(2), +w.ny.toFixed(2)] };
+      let minGap = 99;
+      let maxGap = 0;
+      const normals = new Set<number>();
+      const p0 = { x: g.ship.x, y: g.ship.y };
+      let path = 0;
+      let last = { ...p0 };
+      let shotTaken = false;
+      const trace: number[][] = [];
+      let nextT = performance.now();
+      await hold('KeyD', 8000, () => {
+        if (performance.now() > nextT) {
+          nextT += 250;
+          const vv = g.ship.body.linvel();
+          trace.push([+g.ship.x.toFixed(1), +g.ship.y.toFixed(1), Math.round((Math.atan2(w.ny, w.nx) * 180) / Math.PI), +w.gap.toFixed(2), +Math.hypot(vv.x, vv.y).toFixed(1), w.attached ? 1 : 0, g.hazards.explosions, Math.round(g.ship.health + g.ship.shield)]);
+        }
+        if (!w.attached) return;
+        minGap = Math.min(minGap, w.gap);
+        maxGap = Math.max(maxGap, w.gap);
+        normals.add(Math.round(Math.atan2(w.ny, w.nx) / (Math.PI / 4)));
+        path += Math.hypot(g.ship.x - last.x, g.ship.y - last.y);
+        last = { x: g.ship.x, y: g.ship.y };
+        if (!shotTaken && path > 8) {
+          shotTaken = true;
+          shot('walk-mid');
+        }
+      });
+      const roll = (g.ctx.stage as unknown as { roll: number }).roll;
+      const walked = { attached: w.attached, path: +path.toFixed(1), minGap: +minGap.toFixed(2), maxGap: +maxGap.toFixed(2), normalOctants: normals.size, rollDeg: Math.round((roll * 180) / Math.PI), surfaceDeg: Math.round((Math.atan2(w.ny, w.nx) * 180) / Math.PI) - 90, hp: Math.round(g.ship.health), shield: Math.round(g.ship.shield), cause: g.ship.deathCause, explosions: g.hazards.explosions };
+      await sleep(800);
+      const v = g.ship.body.linvel();
+      const idleSpeed = +Math.hypot(v.x, v.y).toFixed(2);
+      await shot('walk-idle');
+      const nx = w.nx;
+      const ny = w.ny;
+      input.simulateDown('Space');
+      await sleep(40);
+      input.simulateUp('Space');
+      await sleep(300);
+      const v2 = g.ship.body.linvel();
+      log('walk-trace', trace);
+      log(md, { landed, walked, idleSpeed, pushOff: { attached: w.attached, awaySpeed: +(v2.x * nx + v2.y * ny).toFixed(2) } });
     }
     if (md === 'dark') {
       // lighting look: headlamp, lamp off, cutter glow, and the light pass cost

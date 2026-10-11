@@ -14,6 +14,7 @@ import type { Hazards } from './Hazards';
 export interface Controls {
   thrust: number; // 0..1 forward (Space)
   reel: number; // -1 reel in .. 1 reel out
+  move: number; // -1..1 walking along a surface (A/D, screen left/right)
   aimX: number; // world meters; the ship steers to face this point
   aimY: number;
 }

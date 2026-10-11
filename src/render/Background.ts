@@ -62,8 +62,9 @@ class TiledLayer implements Layer {
     this.object.frustumCulled = false;
   }
   update(stage: Stage): void {
-    const w = stage.viewWidth;
-    const h = stage.viewHeight;
+    // a square over the view's diagonal, so a rolled camera never sees its edges
+    const w = Math.hypot(stage.viewWidth, stage.viewHeight);
+    const h = w;
     this.object.position.set(stage.camX, stage.camY, -1);
     this.object.scale.set(w, h, 1);
     this.tex.repeat.set(w / this.tileMeters, h / this.tileMeters);

@@ -2,6 +2,31 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-11 — Hull-walking and camera roll (branch `explore/dark-derelict`)
+
+User request: the ship can attach to the hull and walk around it, and the camera reorients around the ship. The user proposed E to attach and Space to detach.
+
+- **Controls:**
+  - E toggles clamping onto the nearest surface (within 2.8 m).
+  - A/D walk.
+  - Space pushes off at 5 m/s.
+  - E was "reel out", so Q now pays out slack. Reel-in is already holding RMB.
+- **Surface normal from a sampled gradient:** rings of samples (0.8–2.8 m) are summed into a gradient that points away from matter, weighted by 1/r, then smoothed. Per-pixel normals would jitter on stair-stepped pixel surfaces. The gradient wraps convex corners and blends through concave ones without special cases. Pixel bodies count too, so you can cling to debris or machinery. The feet match the surface's velocity at the contact point, and reaction impulses push back on what you hold.
+- **The standoff gap is the shortest of a three-ray fan around -normal.** A single ray along the normal fails in concave corners: the blended normal points into the corner, which is farther away than either wall. Holding the standoff along it pinned the ship into the corner and friction locked it (measured: stuck at 1.35 m along the bisector).
+- **Look-ahead slowdown:** the walking speed drops near a wall ahead so the nose turns the corner instead of ramming it.
+- **Heading:** nose along the walking direction, belly to the surface, using the same stopping-aware steering as aim (`Ship.steerTo`). The tools still aim at the cursor from the nose, so you can cut and shoot while walking.
+- **Camera roll:**
+  - Eases toward "surface is down" (3/s), and keeps its angle after you let go, since there is no up in space.
+  - `camera.roll` turns it off, for comfort.
+  - The stage maps the mouse through the roll.
+  - Coverage for the lighting grid, the gas readback band and the background starfield uses the rolled view's bounds and diagonal.
+- **Measured on the classic level's outer hull:**
+  - 39.7 m walked in 8 s at 5 m/s, wrapping corners (normal 180° → 145° → 90°).
+  - Gap stayed between 0.88 and 1.29 m (target 1.05).
+  - Roll matched the surface to within 3°.
+  - Idle drift was 0.01 m/s; push-off was 4.3 m/s; no damage.
+  - In the fuel room the feet shoved loose fuel barrels into walls and set off a chain reaction. That's real physics, so the test uses the outer hull.
+
 ## 2026-10-11 — Darkness and light (branch `explore/dark-derelict`)
 
 The user wants to test a different direction: a colossal, empty, dark derelict that you explore with a light, repairing and reawakening it, with puzzles over firefights. This is a prototype on a branch; `main` keeps the lit action version. The first step is darkness plus light.

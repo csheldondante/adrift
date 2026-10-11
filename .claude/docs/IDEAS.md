@@ -35,9 +35,15 @@ The ruined ship is colossal, empty and dark. Your ship carries a light to explor
 
 ## Hull-walking with a reorienting camera (2026-10-11)
 
-**Status:** idea; next on the branch.
+**Status:** exploring; first version built on `explore/dark-derelict` (see DECISIONS 2026-10-11).
 
-Proposed controls: **E** attaches to the hull when you're near it, and **Space** detaches with a push-off. E is currently "reel out", so reel moves elsewhere.
+Controls: **E** attaches or lets go, **A/D** walk, **Space** pushes off, **Q** pays out the tether.
+
+Still to try:
+- Walking on moving machinery: it works in principle but is untested.
+- A comfort toggle in the UI. The `camera.roll` tunable exists.
+- Footsteps conducted as sound.
+- Whether the camera should ease back toward a "home" orientation after a long flight.
 
 The ship can attach to the hull and walk around it. Once attached, the camera rotates so the surface you're on is "down".
 
