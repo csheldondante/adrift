@@ -194,6 +194,7 @@ export class Grapple implements Tool {
     this.hvy = sv.y + dy * g.hookSpeed;
     this.flown = 0;
     ctx.ship.body.applyImpulse({ x: -dx * g.recoil, y: -dy * g.recoil }, true);
+    ctx.sound.emit('fire', nose.x, nose.y, 1);
     for (let k = 0; k < 6; k++) ctx.particles.glint(nose.x, nose.y, sv.x + dx * 4 + (Math.random() - 0.5) * 3, sv.y + dy * 4 + (Math.random() - 0.5) * 3, 0.8, 0.9, 1, 0.12, 0.08);
     this.state = 'flying';
   }
@@ -254,7 +255,9 @@ export class Grapple implements Tool {
     this.state = 'attached';
     this.tightening = true;
     this.tensionAvg = 0;
-    // thunk FX
+    // thunk FX; the bite is heard up the line
+    const sv = ctx.ship.body.linvel();
+    ctx.sound.emit('thunk', px, py, Math.min(1, Math.hypot(this.hvx - sv.x, this.hvy - sv.y) / 70), [target]);
     for (let k = 0; k < 10; k++) {
       const s = 2 + Math.random() * 6;
       const t = (Math.random() - 0.5) * 2.4;

@@ -15,7 +15,8 @@ Built decisions and their rationale live in `docs/DECISIONS.md`. This file is fo
 
 **Status:** exploring on branch `explore/dark-derelict`, which is a prototype.
 - Built: darkness, shadowed lighting, headlamp (F), emergency lamps, sensors that emit light and notice the lamp. See DECISIONS 2026-10-11.
-- Next: hull-walking, then a first repair puzzle.
+- Built: hull-walking (2026-10-11), four arms and sound by conduction (2026-10-12).
+- Next: better levels (see open threads), then a first repair puzzle.
 
 The ruined ship is colossal, empty and dark. Your ship carries a light to explore by. You repair things, avoid sensors and security, and gradually reawaken parts of the ship. Progress is puzzle-driven, and the goal is to reach the artifacts.
 
@@ -53,9 +54,33 @@ The ship can attach to the hull and walk around it. Once attached, the camera ro
 - **Synergy with the dark derelict:** flying is fast and loud; hull-walking is slow, precise and quiet. Hull-walking is also the posture for repairs: clamp onto a junction box, crawl along a conduit to trace it, or cling to a moving structure while a sensor sweeps past.
 - **Edge cases:** thin walls, edges of moving machinery, held debris, being cut free (the surface vanishing under you).
 
+## Four arms (2026-10-12)
+
+**Status:** first version built on `explore/dark-derelict` (see DECISIONS 2026-10-12).
+- The arms catch slow debris automatically, E lets go, and they are the feet when hull-walking. The nose faces out.
+
+Still to try:
+- Pull a caught body in snug, rather than holding it wherever it was caught. It's often held one-armed at arm's length.
+- Arms as tools: hold a power cell to a socket, turn a valve, pry a panel.
+- A carry limit by mass.
+- Per-arm grips, so cutting the cell under a hand loosens the hold.
+- Walking with something held.
+- A gentle throw on release.
+
 ## Sound by conduction (2026-10-11)
 
-**Status:** idea.
+**Status:** first version built (see DECISIONS 2026-10-12). Procedural WebAudio:
+- Self, conduct and air buses.
+- Conduction runs through whatever you touch, hold or have harpooned.
+- Wind and room tone come from the gas field.
+
+Next:
+- A vibration field through solid cells, so cuts muffle sound.
+- Bots and movers making noise.
+- Sensors hearing your clanks.
+- A tension creak on the tether.
+
+The original idea follows.
 
 There's no air in most of the derelict, so sound is mostly physical. The player hears three things.
 

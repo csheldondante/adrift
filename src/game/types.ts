@@ -2,6 +2,7 @@
 // GameContext instead of the Game class so they stay testable and don't import each other.
 
 import type * as THREE from 'three/webgpu';
+import type { SoundSink } from '../audio/Soundscape';
 import type { GasField } from '../fields/GasField';
 import type { Physics } from '../physics/Physics';
 import type { PixelWorld } from '../pixel/PixelWorld';
@@ -28,6 +29,7 @@ export interface GameContext {
   readonly ship: Ship;
   readonly hazards: Hazards;
   readonly controls: Controls;
+  readonly sound: SoundSink;
   /** Root for per-run transient visuals (beams, ropes, markers). */
   readonly fx: THREE.Group;
 }

@@ -25,7 +25,7 @@ const url = server.resolvedUrls.local[0] + (query ? `?${query}` : '');
 const browser = await chromium.launch({
   executablePath,
   headless: true,
-  args: ['--enable-unsafe-webgpu', '--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=d3d11', '--js-flags=--expose-gc'],
+  args: ['--enable-unsafe-webgpu', '--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=d3d11', '--js-flags=--expose-gc', '--autoplay-policy=no-user-gesture-required'],
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 let errors = 0;

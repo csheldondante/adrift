@@ -2,6 +2,7 @@
 // runs Game instances; R tears the current run down and builds a fresh one.
 
 import './style.css';
+import { AudioEngine } from './audio/AudioEngine';
 import { WORLD_H, WORLD_W } from './config';
 import { Input } from './core/Input';
 import { GasField } from './fields/GasField';
@@ -39,7 +40,8 @@ async function boot(): Promise<void> {
   const minimap = new Minimap(container);
   const lighting = new Lighting(stage.renderer);
   stage.scene.add(lighting.mesh);
-  const app = { stage, field, input, lighting };
+  const audio = new AudioEngine();
+  const app = { stage, field, input, lighting, audio };
 
   // ?level=classic for the original small derelict (autotests default to it), else a
   // generated dungeon; ?seed=N pins the generator, otherwise each run gets a new ship

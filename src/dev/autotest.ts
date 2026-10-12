@@ -47,7 +47,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
   };
 
   await sleep(800);
-  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'laser', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope', 'walk'] : [mode];
+  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'laser', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope', 'walk', 'arms', 'sound'] : mode.split(',');
   for (const md of modes) {
     restart();
     await sleep(300);
@@ -94,8 +94,14 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       input.simulateDown('KeyE');
       await sleep(40);
       input.simulateUp('KeyE');
-      await sleep(900);
       const w = g.walk;
+      const att: number[][] = [];
+      for (let i = 0; i < 18; i++) {
+        await sleep(50);
+        const vv = g.ship.body.linvel();
+        att.push([w.attached ? 1 : 0, +w.gap.toFixed(2), +vv.x.toFixed(2), +vv.y.toFixed(2), +g.ship.x.toFixed(2), +g.ship.y.toFixed(2)]);
+      }
+      log('walk-attach', att);
       const landed = { attached: w.attached, gap: +w.gap.toFixed(2), normal: [+w.nx.toFixed(2), +w.ny.toFixed(2)] };
       let minGap = 99;
       let maxGap = 0;
@@ -124,10 +130,21 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         }
       });
       const roll = (g.ctx.stage as unknown as { roll: number }).roll;
+      const out = Math.atan2(w.ny, w.nx);
+      const arms = { planted: g.arms.arms.filter((a) => a.on).length, footfalls: g.sound.count.foot ?? 0, clunks: g.sound.count.clunk ?? 0, noseFromNormalDeg: Math.round((Math.atan2(Math.sin(g.ship.angle - out), Math.cos(g.ship.angle - out)) * 180) / Math.PI) };
+      log('walk-arms', arms);
       const walked = { attached: w.attached, path: +path.toFixed(1), minGap: +minGap.toFixed(2), maxGap: +maxGap.toFixed(2), normalOctants: normals.size, rollDeg: Math.round((roll * 180) / Math.PI), surfaceDeg: Math.round((Math.atan2(w.ny, w.nx) * 180) / Math.PI) - 90, hp: Math.round(g.ship.health), shield: Math.round(g.ship.shield), cause: g.ship.deathCause, explosions: g.hazards.explosions };
-      await sleep(800);
+      const idleTrace: number[][] = [];
+      for (let i = 0; i < 8; i++) {
+        await sleep(100);
+        const vv = g.ship.body.linvel();
+        idleTrace.push([+Math.hypot(vv.x, vv.y).toFixed(2), +g.ship.body.angvel().toFixed(2), +w.gap.toFixed(2), Math.round((Math.atan2(w.ny, w.nx) * 180) / Math.PI), w.attached ? 1 : 0, g.controls.move]);
+      }
+      log("walk-idle-trace", idleTrace);
       const v = g.ship.body.linvel();
       const idleSpeed = +Math.hypot(v.x, v.y).toFixed(2);
+      const sb = w.surfaceBody;
+      log('walk-surface', sb ? { body: true, mass: Math.round(sb.body.mass()), speed: +Math.hypot(sb.body.linvel().x, sb.body.linvel().y).toFixed(2) } : { body: false });
       await shot('walk-idle');
       const nx = w.nx;
       const ny = w.ny;
@@ -138,6 +155,113 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       const v2 = g.ship.body.linvel();
       log('walk-trace', trace);
       log(md, { landed, walked, idleSpeed, pushOff: { attached: w.attached, awaySpeed: +(v2.x * nx + v2.y * ny).toFixed(2) } });
+    }
+    if (md === 'arms') {
+      // drift slowly into a crate: the arms catch it; carry it; E lets go with momentum; a fast
+      // approach is not caught
+      for (const approach of [1.2, 6]) {
+        restart();
+        await sleep(300);
+        const g = game();
+        const crate = g.pixels.bodies.find((b) => !b.explosiveCells && !b.tags.salvage && !b.tags.machine && b.body.mass() > 100)!;
+        place(32, 81, Math.PI);
+        const circ = { x: 0, y: 0, r: 0 };
+        crate.boundingCircle(circ);
+        const t = crate.body.translation();
+        const com = crate.body.worldCom();
+        // crate center on the ship's flank, a bit beyond arm reach, drifting in
+        const cy = 81 + 3.2 + circ.r * 0.6;
+        crate.body.setTranslation({ x: t.x - com.x + 32, y: t.y - com.y + cy }, true);
+        crate.body.setLinvel({ x: 0, y: -approach }, true);
+        crate.body.setAngvel(0, true);
+        aim(20, 81);
+        const t0 = performance.now();
+        while (performance.now() - t0 < 2500 && !g.arms.held) await sleep(16);
+        const caught = { approach, held: !!g.arms.held, ms: Math.round(performance.now() - t0), hp: Math.round(g.ship.health + g.ship.shield), grips: g.arms.arms.filter((a) => a.on).length };
+        if (!g.arms.held) {
+          log('arms', { caught });
+          continue;
+        }
+        await shot('arms-held');
+        const gap0 = Math.hypot(crate.body.worldCom().x - g.ship.x, crate.body.worldCom().y - g.ship.y);
+        await hold('Space', 1000);
+        const gap1 = Math.hypot(crate.body.worldCom().x - g.ship.x, crate.body.worldCom().y - g.ship.y);
+        const sv = g.ship.body.linvel();
+        input.simulateDown('KeyE');
+        await sleep(40);
+        input.simulateUp('KeyE');
+        await sleep(300);
+        const cv = crate.body.linvel();
+        const released = { held: !!g.arms.held, crateSpeed: +Math.hypot(cv.x, cv.y).toFixed(2), shipSpeedAtRelease: +Math.hypot(sv.x, sv.y).toFixed(2) };
+        await sleep(1000);
+        log('arms', { caught, carried: { gap0: +gap0.toFixed(2), gap1: +gap1.toFixed(2) }, released, regrabbed: !!g.arms.held });
+      }
+    }
+    if (md === 'sound') {
+      // which paths reach the listener: vacuum silence, own-hull clunks, conduction through a
+      // hull you're clamped to
+      const g = game();
+      const audio = (g as unknown as { app: { audio: { running: boolean; played: object } } }).app.audio;
+      const h = g.sound.heard;
+      // 1) two crates collide far away while we float free in vacuum
+      const crates = g.pixels.bodies.filter((b) => !b.explosiveCells && !b.tags.salvage && !b.tags.machine && b.body.mass() > 50).slice(0, 2);
+      place(30, 60, 0);
+      for (const [i, c] of crates.entries()) {
+        c.body.setTranslation({ x: 30 + (i ? 8 : -8), y: 95 }, true);
+        c.body.setLinvel({ x: i ? -6 : 6, y: 0 }, true);
+        c.body.setAngvel(0, true);
+      }
+      const h0 = { ...h };
+      await sleep(2000);
+      const vacuum = { silent: h.silent - h0.silent, conduct: h.conduct - h0.conduct, air: h.air - h0.air };
+      // 2) bump the hull: own clunk
+      restart();
+      await sleep(300);
+      const g2 = game();
+      const h2 = g2.sound.heard;
+      const ctr = (window as unknown as { __level: { center: { x: number; y: number } } }).__level.center;
+      const sx = g2.ship.x;
+      const sy = g2.ship.y;
+      const dl = Math.hypot(ctr.x - sx, ctr.y - sy);
+      const ux = (ctr.x - sx) / dl;
+      const uy = (ctr.y - sy) / dl;
+      const hull = g2.pixels.raycast(sx, sy, ux, uy, dl);
+      if (!hull) {
+        log(md, { skipped: 'no hull' });
+        continue;
+      }
+      place(hull.x - ux * 4, hull.y - uy * 4, Math.atan2(uy, ux));
+      g2.ship.body.setLinvel({ x: ux * 5, y: uy * 5 }, true);
+      const s0 = h2.self;
+      await sleep(1500);
+      const clunks = h2.self - s0;
+      // 3) clamp on (E), then set off a blast on the hull 20 m away
+      place(hull.x - ux * 2, hull.y - uy * 2, Math.atan2(uy, ux));
+      await sleep(100);
+      input.simulateDown('KeyE');
+      await sleep(40);
+      input.simulateUp('KeyE');
+      await sleep(800);
+      const c0 = { ...h2 };
+      g2.hazards.trigger(hull.x - uy * 20 + ux * 1, hull.y + ux * 20 + uy * 1, 0);
+      await sleep(400);
+      const clamped = { attached: g2.walk.attached, conduct: h2.conduct - c0.conduct, silent: h2.silent - c0.silent };
+      // 4) air: let go, puff gas around the ship with the ship moving through it
+      input.simulateDown("KeyE");
+      await sleep(40);
+      input.simulateUp("KeyE");
+      place(hull.x - ux * 6, hull.y - uy * 6, 0);
+      g2.ship.body.setLinvel({ x: -uy * 4, y: ux * 4 }, true);
+      const a0 = h2.air;
+      let wind = 0;
+      for (let i = 0; i < 20; i++) {
+        g2.ctx.field.inject(g2.ship.x, g2.ship.y, 3, 0.15, 0);
+        await sleep(30);
+        wind = Math.max(wind, g2.sound.levels.wind);
+      }
+      g2.sound.emit("impact", g2.ship.x + 3, g2.ship.y, 0.8, []);
+      const inAir = { wind: +wind.toFixed(3), room: +g2.sound.levels.room.toFixed(3), airEvents: h2.air - a0 };
+      log(md, { audioRunning: audio.running, vacuum, clunks, clamped, inAir, played: audio.played });
     }
     if (md === 'dark') {
       // lighting look: headlamp, lamp off, cutter glow, and the light pass cost

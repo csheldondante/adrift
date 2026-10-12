@@ -10,7 +10,8 @@
 //     body. Reaction impulses push back on whatever you're clinging to.
 //   - walk: A/D sets a tangential speed (screen left/right once the camera has rolled).
 //     With no input the feet hold, matching the surface's velocity.
-//   - heading: nose along the walking direction, belly to the surface.
+//   - heading: belly to the surface, nose out, turned toward the aim within walk.lookAngle.
+//     The four arms (Arms) are the legs and animate the gait.
 //
 // The feet let go when the surface disappears (cut away under you) or on request (E, or
 // Space to push off).
@@ -23,7 +24,7 @@ import type { PixelBody } from '../pixel/PixelBody';
 import type { RayHit } from '../pixel/PixelWorld';
 import type { GameContext } from './types';
 
-const RINGS = [0.8, 1.4, 2.0, 2.8]; // m; the outer ring matches walk.reach
+const RINGS = [1.0, 1.7, 2.5, 3.4]; // m; the outer ring matches walk.reach
 const SPOKES = 20;
 const FAN = [0, 0.6, -0.6]; // rad around -normal for the standoff gap
 const circ = { x: 0, y: 0, r: 0 };
@@ -37,7 +38,6 @@ export class HullWalk {
   gap = 0;
   /** The body being walked on, if it isn't terrain. */
   surfaceBody: PixelBody | null = null;
-  private facing = 1;
   private lostFor = 0;
   private readonly near: PixelBody[] = [];
 
@@ -64,7 +64,7 @@ export class HullWalk {
     let hits = 0;
     for (const r of RINGS) {
       for (let k = 0; k < SPOKES; k++) {
-        const a = ((k + (r === 1.4 ? 0.5 : 0)) / SPOKES) * Math.PI * 2;
+        const a = ((k + (r === 1.7 ? 0.5 : 0)) / SPOKES) * Math.PI * 2;
         const cx = Math.cos(a);
         const cy = Math.sin(a);
         if (!this.solidAt(x + cx * r, y + cy * r)) continue;
@@ -93,9 +93,6 @@ export class HullWalk {
     this.nx = n.x;
     this.ny = n.y;
     this.lostFor = 0;
-    // face whichever way along the surface the nose already points
-    const a = sh.angle;
-    this.facing = Math.cos(a) * n.y - Math.sin(a) * n.x >= 0 ? 1 : -1;
     return true;
   }
 
@@ -182,7 +179,7 @@ export class HullWalk {
     if (move !== 0) {
       const dir = move > 0 ? 1 : -1;
       const ahead = ctx.pixels.raycast(sh.x, sh.y, tx * dir, ty * dir, 3, body ?? undefined);
-      if (ahead) wantVt = dir * Math.min(Math.abs(wantVt), Math.max(1.2, (ahead.dist - 0.9) * 3));
+      if (ahead) wantVt = dir * Math.min(Math.abs(wantVt), Math.max(1.2, (ahead.dist - w.standoff) * 3));
     }
     const maxDt = (move !== 0 ? w.accel : w.footAccel) * dt;
     const dvt = Math.max(-maxDt, Math.min(maxDt, wantVt - vt));
@@ -193,7 +190,12 @@ export class HullWalk {
     // the feet push on what they hold (kinematic machines ignore it)
     if (body) body.body.applyImpulseAtPoint({ x: -jx, y: -jy }, { x: hit.x, y: hit.y }, true);
 
-    if (move !== 0) this.facing = move > 0 ? 1 : -1;
-    sh.steerTo(Math.atan2(ty * this.facing, tx * this.facing), dt);
+    // heading: belly to the surface, nose out (the arms are the legs), turned toward the aim
+    // within a cone so the lamp and tools can look around
+    const out = Math.atan2(ny, nx);
+    const c = ctx.controls;
+    const aim = Math.atan2(c.aimY - sh.y, c.aimX - sh.x);
+    const look = Math.max(-w.lookAngle, Math.min(w.lookAngle, Math.atan2(Math.sin(aim - out), Math.cos(aim - out))));
+    sh.steerTo(out + look, dt);
   }
 }

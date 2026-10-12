@@ -26,6 +26,8 @@ interface Machine {
   /** World position of the body's center at time t. */
   center(t: number): P;
   shaft?: { ribbon: Ribbon; anchor: P; width: number };
+  /** Speed last step (m/s), to detect hitting a stop. */
+  speed: number;
 }
 
 /** Steel block with hazard stripes on the given faces. */
@@ -58,6 +60,8 @@ function slam(phase: number): number {
 export class Machinery {
   readonly machines: Machine[] = [];
   time = 0;
+  /** A machine moving fast came to a dead stop (a crusher slamming home): sound, shake. */
+  onStop?: (body: PixelBody, x: number, y: number, speed: number) => void;
 
   constructor(
     private readonly pixels: PixelWorld,
@@ -94,7 +98,7 @@ export class Machinery {
     const back = { x: e.x - (e.dx / len) * (e.h / 2), y: e.y - (e.dy / len) * (e.h / 2) };
     const ribbon = new Ribbon(0x3c4250, ORDER.bodies - 1);
     fx.add(ribbon.mesh);
-    this.machines.push({ body, center, shaft: { ribbon, anchor: back, width: e.w * 0.35 } });
+    this.machines.push({ body, center, shaft: { ribbon, anchor: back, width: e.w * 0.35 }, speed: 0 });
   }
 
   private addMover(e: MoverSpec): void {
@@ -114,7 +118,7 @@ export class Machinery {
       const k = p < half ? s : 1 - s;
       return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
     };
-    this.machines.push({ body: this.spawn(grid, center(0)), center });
+    this.machines.push({ body: this.spawn(grid, center(0)), center, speed: 0 });
   }
 
   /** Drives machines to their next positions; call before the physics step. */
@@ -123,6 +127,12 @@ export class Machinery {
     for (const mc of this.machines) {
       if (!mc.body.alive) continue;
       const c = mc.center(this.time + dt);
+      if (dt > 0) {
+        const c0 = mc.center(this.time);
+        const v = Math.hypot(c.x - c0.x, c.y - c0.y) / dt;
+        if (mc.speed > 1.5 && v < 0.2) this.onStop?.(mc.body, c.x, c.y, mc.speed);
+        mc.speed = v;
+      }
       const g = mc.body.grid;
       mc.body.body.setNextKinematicTranslation({ x: c.x - (g.w * CELL) / 2, y: c.y - (g.h * CELL) / 2 });
     }

@@ -34,8 +34,10 @@ The top-left minimap reveals the ship as you explore. It always shows you (white
 | F | Headlamp on/off (you need it to see; sensors can see it too) |
 | Left mouse (hold) | Cutter laser (pushes loose things; watch the heat meter, overheating locks it until cool) |
 | Right mouse | Fire harpoon; click again to let go; hold to winch in (clamps on contact) |
-| E | Clamp onto the hull (or let go); then **A / D** walk along it and **Space** pushes off. The camera rolls so the hull is down. |
+| (drift slowly into debris) | The four arms catch it: carry it as a shield or ram |
+| E | Let go of what the arms hold (it keeps its momentum). Otherwise clamp onto the hull (or let go); then **A / D** walk along it on the arms and **Space** pushes off. The camera rolls so the hull is down. |
 | Q | Pay out tether slack (hold RMB to winch in) |
+| M | Mute sound (you hear your own ship; other sounds only through what you touch, or through air) |
 | Wheel | Zoom |
 | R | Restart |
 | H | Hide help |

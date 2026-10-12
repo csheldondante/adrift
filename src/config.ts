@@ -103,8 +103,9 @@ export const tune = {
     solverIterations: 8, // applied on restart; more = stiffer joints/rope, more CPU
   },
   walk: {
-    reach: 2.8, // m from the surface at which E can clamp on
-    standoff: 1.05, // m from ship center to the surface while walking
+    reach: 3.4, // m from the surface at which E can clamp on
+    standoff: 1.9, // m from ship center to the surface while walking (tail corners clear at any lean: hull reaches 1.55 m)
+    lookAngle: 0.6, // rad the nose may turn from straight out toward the aim
     stiffness: 8, // 1/s: standoff error -> normal speed
     landSpeed: 4, // m/s max approach/retreat speed of the feet
     footAccel: 60, // m/s² grip (normal hold, and braking when idle)
@@ -112,6 +113,25 @@ export const tune = {
     speed: 5, // m/s walking speed
     pushOff: 5, // m/s kick away from the surface on Space
     normalSmoothing: 10, // 1/s surface-normal smoothing
+  },
+  arms: {
+    upper: 1.25, // m upper arm
+    fore: 1.25, // m forearm (reach = upper + fore from the mount)
+    grabSpeed: 2.5, // m/s: loose bodies drifting slower than this relative to the ship get caught
+    minMass: 20, // kg: lighter scraps are ignored
+    frontSpread: 0.8, // m out along the surface from under the front mounts (walking stance)
+    rearSpread: 1.3, // m, rear mounts
+    stepDistance: 0.6, // m a planted foot may lag its stance point before it steps
+    stepTime: 0.17, // s per step at a standstill (faster when walking fast)
+    stepLift: 0.35, // m arc height of a step
+    strideLead: 0.18, // s of walking velocity the stance point leads by
+    maxLead: 0.6, // m cap on that lead (feet stay within reach)
+  },
+  audio: {
+    volume: 0.7, // master (M mutes)
+    muted: false,
+    conductRange: 45, // m: conducted sound falls to half at this distance through structure
+    airRange: 12, // m: airborne sound falls to half at this distance
   },
   camera: {
     roll: true, // camera turns so the surface you walk on is down (keeps its angle after you let go)

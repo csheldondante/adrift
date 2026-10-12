@@ -23,6 +23,10 @@ export class Cutter implements Tool {
   get firing(): boolean {
     return this.active;
   }
+  /** Firing and the beam is on matter. */
+  get cutting(): boolean {
+    return this.active && this.hitting;
+  }
   /** Beam end point (world meters), valid while firing. */
   get beamEnd(): { x: number; y: number } {
     return { x: this.ex, y: this.ey };

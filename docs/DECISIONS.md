@@ -2,6 +2,57 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-12 — Four arms, and sound by conduction (branch `explore/dark-derelict`)
+
+User request: four articulated arms that grab things you approach slowly and closely (so close debris doesn't need the tether), that walk on the hull with the body swung to face out; and sound for the probe's own systems, air rushing past, clunks against the hull and harpoon hits, conducted through the hull, with airborne sound only in atmosphere.
+
+**Arms** (`src/game/Arms.ts`)
+- **Catching is automatic.** A loose body (not machinery, at least 20 kg) is caught when an arm can reach it (rays from each mount, 2.5 m) and it drifts slower than 2.5 m/s relative to the ship. The hold is a fixed joint at the current pose, the same construction as the harpoon clamp, so a held body is a shield or ram and is a crash cushion like clamped debris.
+- **E lets go first.** E releases what the arms hold; with nothing held it toggles hull-walking as before. The released body keeps its momentum (tow, then throw) and is ignored until it drifts out of reach, so it isn't re-caught instantly.
+- **Fast hits bounce.** A body that slams into the hull faster than the catch speed is knocked away from the arms and not caught on the rebound. Without that, a 6 m/s crate bounced, slowed, and was caught.
+- **When the arms catch what the harpoon holds, the line is released.** The arms take over.
+- **Walking:** the arms are the feet, purely visual. HullWalk still does the physics. Diagonal pairs alternate. A foot steps when it lags its stance point by max(0.6 m, 0.15 s × speed), and lands ahead by the stride lead (capped at 0.6 m so feet stay in reach). Measuring lag from the stance point without the lead keeps strides long. The first version re-stepped every frame because the led target was out of reach.
+- **Facing out:** while walking, the nose points away from the surface and turns toward the aim by up to 0.6 rad, so the lamp and tools can look around. That needed a larger standoff, 1.9 m (was 1.05). Tilted, the tail corners reach 1.55 m below the center. At 1.7 m they scraped the hull, which made the ship wobble and clunk when idle.
+
+**Sound** (`src/audio/`): procedural WebAudio, no sample files.
+- **AudioEngine** is long-lived and only synthesizes:
+  - Continuous loops: power hum, thruster, RCS hiss, cutter, sizzle, winch, servos, wind, room tone.
+  - One-shots: struck plate, thump, boom, click, zip.
+  - Three buses:
+    - **self:** muffled, with a short metallic ring; brightens in air.
+    - **conduct:** lowpassed, with a long synthetic hull ring.
+    - **air:** plain.
+- **Soundscape** (per run) decides the path for each event:
+  - Your ship's own sounds are always heard.
+  - Other events need conduction or air.
+  - **Conduction** means the event is on something the ship is coupled to:
+    - the walked-on surface;
+    - what the arms hold;
+    - the harpoon target, weighted by how taut the line is;
+    - anything with real contact points against the hull.
+    - Terrain and machines count as one structure. The harpoon bite is always heard up the line.
+  - **Air** needs gas at both ends.
+  - In open vacuum with nothing touching, the derelict is silent. That's the point.
+  - Wind follows gas density times the gas speed relative to the ship.
+- **Impacts sound once, at onset.** Contact-force events repeat every step while bodies rest against each other.
+- **M mutes.** The context starts on the first key or mouse press (autoplay rules); headless tests launch Chrome with autoplay allowed.
+- **Rejected for now:** a vibration field diffused through solid cells, like heat. It would make cuts between you and a source muffle it, but "same object, distance falloff" was enough to hear whether the idea plays. The vibration field is the planned upgrade.
+
+**Bug fixed along the way.** A Space press made while flying stayed latched in the input (thrust reads held state, and nothing consumed the press). The next time you clamped on with E, it kicked you straight off. Space presses are now consumed every frame.
+
+**Measured** (headless):
+- Arms:
+  - A 1.2 m/s approach is caught in 0.15 s and carried with the gap unchanged under thrust.
+  - Release leaves the crate moving; it isn't re-grabbed.
+  - A 6 m/s hit is not caught.
+- Walk: 40 m at 5 m/s, gap 1.72–2.08 m, 4 feet planted, idle 0 m/s, no hull scrapes.
+- Sound:
+  - A far collision in vacuum is silent.
+  - Hull bumps clunk on the self bus.
+  - A blast 20 m away conducts while clamped to the hull.
+  - In a gas puff, wind and an airborne impact are heard.
+- Full regression and dungeon/stealth tests pass.
+
 ## 2026-10-11 — Hull-walking and camera roll (branch `explore/dark-derelict`)
 
 User request: the ship can attach to the hull and walk around it, and the camera reorients around the ship. The user proposed E to attach and Space to detach.

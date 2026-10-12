@@ -8,6 +8,8 @@
 // The gas field steps once per frame after physics; its readback is 1–2 frames latent.
 
 import * as THREE from 'three/webgpu';
+import type { AudioEngine } from '../audio/AudioEngine';
+import { Soundscape, type Contact } from '../audio/Soundscape';
 import { CELL, FIXED_DT, tune } from '../config';
 import type { Input } from '../core/Input';
 import type { FieldSample, GasField } from '../fields/GasField';
@@ -21,6 +23,7 @@ import { ORDER } from '../render/order';
 import { Particles } from '../render/Particles';
 import { PixelLayer } from '../render/PixelLayer';
 import type { Stage } from '../render/Stage';
+import { Arms } from './Arms';
 import { Cutter } from './Cutter';
 import { Grapple } from './Grapple';
 import { Hazards } from './Hazards';
@@ -39,6 +42,7 @@ export interface AppServices {
   field: GasField;
   input: Input;
   lighting: Lighting;
+  audio: AudioEngine;
 }
 
 /** A fixed light in the level (emergency lamps); flicker is per light. */
@@ -64,6 +68,12 @@ export class Game {
   readonly grapple: Grapple;
   readonly controls: Controls = { thrust: 0, reel: 0, move: 0, aimX: 0, aimY: 0 };
   readonly walk: HullWalk;
+  readonly arms: Arms;
+  readonly sound: Soundscape;
+  /** Contact pairs (collider handles) touching last step, so impacts sound once at onset. */
+  private touchingPairs = new Set<string>();
+  private shipTouchedLast = false;
+  private lastRopeLength = 0;
   /** Camera roll (radians); follows the surface while hull-walking and keeps its angle after. */
   private roll = 0;
   readonly ctx: GameContext;
@@ -125,7 +135,9 @@ export class Game {
     this.root.add(this.objective.mesh, this.pixels.group, this.ship.group, this.particles.group, this.fx);
     stage.world.add(this.root);
 
+    this.sound = new Soundscape(app.audio, field, stage);
     this.ctx = {
+      sound: this.sound,
       physics: this.physics,
       pixels: this.pixels,
       field,
@@ -143,6 +155,8 @@ export class Game {
     this.grapple = new Grapple(this.ctx);
     this.slots = [this.cutter, this.grapple];
     this.walk = new HullWalk(this.ctx);
+    this.arms = new Arms(this.ctx, this.walk);
+    this.machinery.onStop = (body, x, y, speed) => this.sound.emit('slam', x, y, Math.min(1, speed / 12), [body]);
 
     this.pixels.events = {
       cellDestroyed: (x, y, mat, shade, vx, vy) => {
@@ -153,12 +167,17 @@ export class Game {
       },
       explosiveDestroyed: (x, y) => this.hazards.trigger(x, y),
       terrainChanged: (r) => field.setSolidFromGrid(tg, r),
-      bodyRemoved: (b) => this.grapple.onBodyRemoved(b),
+      bodyRemoved: (b) => {
+        this.grapple.onBodyRemoved(b);
+        this.arms.onBodyRemoved(b);
+      },
     };
     this.hazards.onExplode = (x, y) => {
       const d = Math.hypot(x - this.ship.x, y - this.ship.y);
       stage.shake(Math.max(0, 0.9 - d / 40));
       this.flashes.push({ x, y, t: 0 });
+      // blasts happen in the hull's own matter (fuel cells) or right against it
+      this.sound.emit('explosion', x, y, 1, [this.pixels.terrain, this.pixels.bodyAt(x, y) ?? undefined]);
     };
   }
 
@@ -176,12 +195,22 @@ export class Game {
     c.thrust = input.down('Space') ? 1 : 0;
     c.reel = input.down('KeyQ') ? 1 : 0; // pay out slack (holding RMB winches in)
     c.move = (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
-    // E clamps onto the nearest surface (or lets go); Space kicks off it
+    // E: let go of what the arms hold, else clamp onto the nearest surface (or let go of it);
+    // Space kicks off a surface
+    const sh = this.ship;
     if (input.hit('KeyE')) {
-      if (this.walk.attached) this.walk.detach();
-      else this.walk.tryAttach();
+      if (this.arms.release()) this.sound.emit('release', sh.x, sh.y, 1);
+      else if (this.walk.attached) this.walk.detach();
+      else if (this.walk.tryAttach()) this.sound.emit('clamp', sh.x, sh.y, 1);
     }
-    if (this.walk.attached && input.hit('Space')) this.walk.detach(true);
+    // consume the press every frame: a Space tap made while flying must not linger and kick
+    // you off the next surface you clamp to
+    const spaceHit = input.hit('Space');
+    if (this.walk.attached && spaceHit) {
+      this.walk.detach(true);
+      this.sound.emit('pushoff', sh.x, sh.y, 1);
+    }
+    if (input.hit('KeyM')) tune.audio.muted = !tune.audio.muted;
     stage.screenToWorld(input.mouseX, input.mouseY, v2);
     c.aimX = v2.x;
     c.aimY = v2.y;
@@ -189,7 +218,10 @@ export class Game {
     if (input.hit('Mouse2')) this.slots[1].press();
     if (input.released('Mouse0')) this.slots[0].release();
     if (input.released('Mouse2')) this.slots[1].release();
-    if (input.hit('KeyF')) this.ship.lampOn = !this.ship.lampOn;
+    if (input.hit('KeyF')) {
+      sh.lampOn = !sh.lampOn;
+      this.sound.emit('lamp', sh.x, sh.y, 1);
+    }
     if (input.hit('KeyP')) tune.grapple.pivot = tune.grapple.pivot === 'com' ? 'nose' : 'com';
     const wheel = input.takeWheel();
     if (wheel) this.zoom = Math.max(16, Math.min(90, this.zoom * Math.pow(1.12, wheel)));
@@ -210,6 +242,7 @@ export class Game {
     this.pixels.cool(dt);
     this.pixels.syncVisuals();
     this.ship.sync(this.time);
+    this.arms.frameUpdate(dt, this.time);
     for (const t of this.slots) t.frameUpdate(dt);
     this.machinery.frameUpdate();
     this.security.frameUpdate();
@@ -221,6 +254,54 @@ export class Game {
     this.updateDebugLines();
     this.updateCamera(dt);
     this.updateLighting(dt);
+    this.updateSound(dt);
+  }
+
+  /** What the ship is mechanically coupled to (sound conducts through these). */
+  private listenerContacts(): Contact[] {
+    const out: Contact[] = [];
+    const sh = this.ship;
+    if (!sh.alive) return out;
+    if (this.walk.attached) out.push({ obj: this.walk.surfaceBody ?? this.pixels.terrain, w: 1 });
+    if (this.arms.held) out.push({ obj: this.arms.held, w: 1 });
+    const gt = this.grapple.targetObject;
+    if (gt && this.grapple.state === 'clamped') out.push({ obj: gt, w: 1 });
+    else if (gt && this.grapple.attached) out.push({ obj: gt, w: 0.2 + 0.8 * Math.min(1, this.grapple.tautness) }); // a slack line barely carries
+    // resting against something (actual contact points, not just overlapping bounds)
+    const { world } = this.physics;
+    const cands: import('@dimforge/rapier2d-compat').Collider[] = [];
+    world.contactPairsWith(sh.collider, (c2) => {
+      cands.push(c2);
+    });
+    for (const c2 of cands) {
+      const o = this.physics.ownerOf(c2);
+      if (!o || o.kind === 'rope') continue;
+      let touching = false;
+      world.contactPair(sh.collider, c2, (m) => {
+        if (m.numSolverContacts() > 0) touching = true;
+      });
+      if (touching) out.push({ obj: o, w: 0.9 });
+    }
+    return out;
+  }
+
+  private updateSound(dt: number): void {
+    const sh = this.ship;
+    const v = sh.body.linvel();
+    const len = this.grapple.length;
+    const winch = dt > 0 && this.lastRopeLength > 0 && len > 0 ? (len - this.lastRopeLength) / dt : 0;
+    this.lastRopeLength = len;
+    this.sound.update(sh.x, sh.y, this.listenerContacts(), {
+      alive: sh.alive,
+      thrust: sh.thrustLevel,
+      rcs: sh.brake + Math.abs(sh.turnInput) * 0.6,
+      cutter: this.cutter.firing,
+      cutting: this.cutter.cutting,
+      winch,
+      servo: this.arms.motion,
+      vx: v.x,
+      vy: v.y,
+    }, this.time);
   }
 
   /** Emergency lamps in a fraction of rooms: dim, warm, flickering pools in the dark. */
@@ -314,6 +395,7 @@ export class Game {
       this.ship.idleEngines();
       this.walk.fixedUpdate(dt, this.controls.move);
     } else this.ship.control(this.controls, dt);
+    this.stepArms(dt);
     this.updateConspicuity();
     this.ship.updateShield(dt);
     this.slots[0].fixedUpdate(dt, input.down('Mouse0'));
@@ -331,6 +413,21 @@ export class Game {
     this.physics.step();
     this.pixels.syncTransforms();
     this.applyDamage(dt);
+  }
+
+  private stepArms(dt: number): void {
+    const arms = this.arms;
+    const before = arms.held;
+    // the harpoon clamp already holds something: the arms stay out of it
+    arms.fixedUpdate(dt, this.grapple.state !== 'clamped');
+    if (arms.held && arms.held !== before) {
+      // caught: the arms take over from the harpoon line if it was on the same body
+      if (this.grapple.targetObject === arms.held) this.grapple.detach();
+      const c = arms.held.body.worldCom();
+      this.sound.emit('grab', c.x, c.y, 1);
+    }
+    for (const l of arms.landed) this.sound.emit('foot', l.x, l.y, l.e);
+    arms.landed.length = 0;
   }
 
   /** Gas flow drags bodies toward its velocity, scaled by density and exposed area. */
@@ -359,7 +456,7 @@ export class Game {
   private cullFarBodies(): void {
     const far = 150; // m beyond the level rectangle
     for (const b of this.pixels.bodies.slice()) {
-      if (b.tags.salvage || this.grapple.targetObject === b) continue;
+      if (b.tags.salvage || this.grapple.targetObject === b || this.arms.held === b) continue;
       const t = b.body.translation();
       if (t.x < -far || t.y < -far || t.x > this.worldW + far || t.y > this.worldH + far) this.pixels.removeBody(b);
     }
@@ -369,14 +466,21 @@ export class Game {
     const s = tune.ship;
     const imp = tune.impact;
     let shipTouched = false;
+    const pairs = new Set<string>();
     for (const cf of this.physics.contactForces) {
       if (cf.a === this.ship || cf.b === this.ship) {
         const other = cf.a === this.ship ? cf.b : cf.a;
-        // held debris is a cushion ("the ship's arms"): touching it never counts as a crash, and
-        // if only it takes the hit, the jolt through the tether/clamp doesn't either. Terrain
+        // held debris is a cushion (in the arms or on the clamp): touching it never counts as a
+        // crash, and if only it takes the hit, the jolt through the hold doesn't either. Terrain
         // you're anchored to gets no such pass.
         const held = this.grapple.heldBody;
-        if (other?.kind !== 'rope' && !(held && other === held)) shipTouched = true;
+        if (other?.kind !== 'rope' && !(held && other === held) && other !== this.arms.held) shipTouched = true;
+        // a loose body that hit faster than the arms can catch bounces off, not into them
+        if (other?.kind === 'pixelBody') {
+          const ob = other as PixelBody;
+          const m = Math.min(this.ship.body.mass(), ob.body.mass());
+          if ((cf.force * dt) / m > tune.arms.grabSpeed) this.arms.knock(ob);
+        }
         // pinned by a machine: instant death (a glancing knock is just normal impact damage)
         if (other?.kind === 'pixelBody' && (other as PixelBody).tags.machine && cf.force > s.crushForce) {
           this.ship.damage(Infinity, 'crushed');
@@ -387,6 +491,13 @@ export class Game {
       }
       if (cf.a?.kind === 'rope' || cf.b?.kind === 'rope') continue;
       const j = cf.force * dt; // impulse this step (N·s)
+      // collisions sound once, when contact starts (resting contact reports every step)
+      const key = `${cf.h1}:${cf.h2}`;
+      pairs.add(key);
+      if (!this.touchingPairs.has(key) && j > 20) {
+        const p = this.physics.contactPoint(cf.h1, cf.h2);
+        if (p) this.sound.emit('impact', p.x, p.y, Math.min(1, j / 600), [cf.a, cf.b]);
+      }
       // explosive bodies (barrels) go off when hit hard enough — whip them into things
       for (const o of [cf.a, cf.b]) {
         if (o?.kind !== 'pixelBody') continue;
@@ -409,15 +520,19 @@ export class Game {
     // Crash damage comes from the physics, with no special cases: the ship's velocity change
     // over a step in which it touched something is the impact speed. Gentle contact (slow
     // winch docking, nudging crates) stays under the safe speed; slamming into anything hurts.
+    this.touchingPairs = pairs;
     if (shipTouched && this.ship.alive) {
       const v = this.ship.body.linvel();
       const dv = Math.hypot(v.x - this.preVel.x, v.y - this.preVel.y);
       this.lastImpactSpeed = dv;
+      // your own hull ringing: on first contact, or any real knock while scraping along
+      if ((!this.shipTouchedLast && dv > 0.3) || dv > 1.5) this.sound.emit('clunk', this.ship.x, this.ship.y, Math.min(1, dv / 8));
       if (dv > s.safeImpactSpeed) {
         this.ship.damage((dv - s.safeImpactSpeed) * s.impactDamagePerSpeed, 'impact');
         this.app.stage.shake(Math.min(0.5, dv / 25));
       }
     }
+    this.shipTouchedLast = shipTouched;
     if (this.ship.alive) {
       this.ctx.field.sample(this.ship.x, this.ship.y, sample);
       if (sample.heat > 0.3) this.ship.damage(s.heatDamage * sample.heat * dt, 'heat');
@@ -426,6 +541,7 @@ export class Game {
       this.deathHandled = true;
       this.grapple.detach();
       this.walk.detach();
+      this.arms.detachAll();
       this.hazards.trigger(this.ship.x, this.ship.y, 0);
     }
   }
@@ -525,6 +641,8 @@ export class Game {
 
   dispose(): void {
     for (const t of this.slots) t.dispose();
+    this.arms.dispose();
+    this.app.audio.quiet();
     this.machinery.dispose();
     this.security.dispose();
     this.objective.dispose();

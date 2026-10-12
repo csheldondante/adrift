@@ -51,7 +51,7 @@ export class Hud {
       this.root,
       `<b>Mouse</b> aim (the ship turns to face it) · <b>Space</b> thrust · <b>F</b> lamp (sensors see it)<br>
        <b>LMB</b> cutter · <b>RMB</b> harpoon · click again: let go · hold: winch in &amp; clamp on contact<br>
-       <b>E</b> clamp to hull / let go · <b>A/D</b> walk · <b>Space</b> push off · <b>Q</b> pay out tether · 
+       <b>E</b> let go of what the arms hold · clamp to hull / let go · drift slowly into debris: the arms catch it · <b>A/D</b> walk · <b>Space</b> push off · <b>Q</b> pay out tether · <b>M</b> mute · 
 <b>P</b> rope pivot COM/nose · <b>Wheel</b> zoom · <b>R</b> restart · <b>H</b> hide help · <b>\`</b> debug panel`,
     );
     this.markers = [
@@ -89,7 +89,7 @@ export class Hud {
     const v = game.ship.body.linvel();
     const speed = Math.hypot(v.x, v.y);
     const mass = game.ship.body.mass() + (game.grapple.targetObject?.kind === 'pixelBody' ? (game.grapple.targetObject as unknown as { body: { mass(): number } }).body.mass() : 0);
-    this.stats.innerHTML = `${speed.toFixed(1)} m/s<br><small>${Math.round(mass)} kg ${game.grapple.attached ? '(towing)' : ''}</small><br><small>lamp ${game.ship.lampOn ? 'on' : 'OFF · dark'} [F]</small>`;
+    this.stats.innerHTML = `${speed.toFixed(1)} m/s<br><small>${Math.round(mass)} kg ${game.grapple.attached ? '(towing)' : ''}</small><br><small>lamp ${game.ship.lampOn ? 'on' : 'OFF · dark'} [F]</small><br><small>arms ${game.arms.status()}${tune.audio.muted ? ' · muted [M]' : ''}</small>`;
     const ang = Math.atan2(v.y, v.x);
     this.velArrow.style.transform = `rotate(${-ang}rad) scaleX(${Math.min(1, speed / 15)})`;
     this.velArrow.style.opacity = speed > 0.2 ? '1' : '0.2';
