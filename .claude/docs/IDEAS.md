@@ -11,6 +11,71 @@ Built decisions and their rationale live in `docs/DECISIONS.md`. This file is fo
 
 ---
 
+## Making it a game: playtest notes and roadmap (user, 2026-10-12)
+
+**Status:** idea; the milestones below are a proposed order, and none is started.
+
+**What works (keep and build on):**
+- The laser cutter: the most fun thing, especially precision cuts.
+- Explosive decompression.
+- The grapple: janky and hard to use, but great as an anchor during decompression and for whipping round corners.
+- Hull-walking.
+- Sound tied to what you touch. This should apply in vacuum only: decompression should rush, and pressurized rooms should sound normal. *Fixed 2026-10-12.*
+- Dark rooms you light with the lamp.
+
+**What doesn't work:**
+- The cutter is overpowered against enemies and under-used everywhere else.
+- Uncuttable things are annoying, and in the dark you can't tell what is cuttable. Prefer soft limits, like the laser overheating before you get through very much.
+- The grapple never gets long corridors or corners that call for it.
+- The mashers are too random, too gamey, too fast and too deadly.
+- The ship should look like a submarine or deep-sea probe. The concept art (C:/Users/cshel/Pictures/ShipConceptArtMockup.png) shows:
+  - a round hull with a rotating ring and four articulated arms;
+  - magnetic feet and gripper claws;
+  - the cutter as one of the arms;
+  - the grapple as a winch.
+
+**Ideas, grouped:**
+
+1. **The material and heat model** (the foundation for most of the rest)
+   - Cut areas glow white-hot and stay glowing longer, since the light is cool.
+   - Some materials spark while being cut.
+   - Hard materials soak heat and glow before they burn at all.
+   - Weld by pressing hot pieces together.
+2. **Precision targets**
+   - Enemies have several vulnerable parts (power core, engines, weapons, sensors), shielded from some angles by heat-resistant armor.
+   - Drill to the red core and the drone goes dead and drifts.
+   - The derelict has internals worth cutting to as well.
+3. **Vibration scan**
+   - Walking the hull lets you scan it with vibrations to reveal hidden internals: conduits, cores, voids.
+   - This solves "what is cuttable or worth cutting in the dark".
+4. **Ship systems in the walls**
+   - Power and pressure networks.
+   - Restoring power lights rooms, opens doors and wakes sensors.
+   - Pressure doors are hard to cut but open when their chamber is pressurized.
+   - Puzzle chain: weld a hull breach, restore power, the room repressurizes, the pressure door opens.
+5. **Steal power**
+   - Harpoon an enemy's power and carry it into the ship's network.
+6. **Stealth rooms**
+   - Rooms full of scanners; hide behind debris.
+   - Probes investigate debris that moves oddly and fly around it, so you have to keep repositioning.
+7. **Level geometry that uses the tools**
+   - Long corridors and sharp corners for grapple swings.
+   - Rooms built to be vented deliberately: grapple in and blow the enemies into space.
+   - Pressurized transit tubes that push the probe along.
+   - Replace the mashers with slower, readable, purposeful machinery.
+8. **Probe redesign**
+   - Submarine or deep-sea-probe look.
+   - The cutter on an arm, the grapple as a winch.
+
+**Proposed order:**
+- **A. Materials and heat:** glow, sparks, armor, weld, soft overheat.
+- **B. A drone with weak points:** a core, armor, and engine, weapon and sensor parts.
+- **C. Power and pressure networks in the walls**, with pressure doors and breach-welding; the first real puzzle.
+- **D. A hand-built level** with corridors, a vent trap and a transit tube.
+- **E. Vibration scan.**
+- **F. Probe visuals:** cutter arm and winch.
+- **G. Stealth rooms with curious probes.**
+
 ## Direction: the colossal dark derelict (2026-10-11)
 
 **Status:** exploring on branch `explore/dark-derelict`, which is a prototype.

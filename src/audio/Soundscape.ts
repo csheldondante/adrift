@@ -8,6 +8,7 @@
 //                   (weighted by how taut the line is). Machines count as part of the hull.
 //                   Falls off slowly with distance (big hulls carry sound).
 //       air:        atmosphere at both ends (gas field), falling off quickly with distance.
+//     Conduction fades out as air comes in: pressurized rooms sound normal.
 //     In open vacuum with nothing touching, the derelict is silent.
 //   - Wind is air moving past the ship (gas density × relative speed), on the air bus.
 //
@@ -193,6 +194,8 @@ export class Soundscape implements SoundSink {
     const d = Math.hypot(x - this.x, y - this.y);
     let cond = this.conduction(on, d);
     if (kind === 'thunk') cond = Math.max(cond, 1 / (1 + d / tune.audio.conductRange)); // straight up the line
+    // conduction is how you hear in vacuum; in atmosphere the air carries sound and the hull's ring drops out
+    cond *= 1 - this.air;
     const air = this.air * this.airAt(x, y) / (1 + d / tune.audio.airRange);
     if (cond < 0.01 && air < 0.01) {
       this.heard.silent++;

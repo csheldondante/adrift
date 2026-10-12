@@ -293,3 +293,11 @@ The field is a staggered, compressible-ish grid: pressure equals density, face v
 
 ### Testing approach
 `npm run smoke` launches system Chrome headless with WebGPU through playwright-core, so no browser download is needed. It runs the scripted scenarios in `src/dev/autotest.ts` and logs measurable outcomes. These scenarios only check that mechanics work; they say nothing about whether the game is fun, which needs hand playtesting.
+
+## 2026-10-12 — Conduction is for vacuum
+
+Playtest note: hearing through the hull should only happen in vacuum. Pressurized rooms should sound normal, and decompression should rush.
+
+**Decision:** scale conducted sound by `1 − air at the listener`. In atmosphere the air path takes over, so you hear normal sound, plus wind from gas moving past the ship.
+
+**Why:** a single scale factor keeps the model physical. Air drowns out the hull's ring, so there is no separate mode switch that could get out of sync with the gas field.
