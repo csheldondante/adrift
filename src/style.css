@@ -258,3 +258,77 @@ canvas {
   color: #ff5a4d;
   animation: blink 0.5s steps(2) infinite;
 }
+
+.hud-hint {
+  display: none;
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 70vw;
+  padding: 6px 14px;
+  background: var(--hud-panel);
+  color: var(--hud-fg);
+  font-size: 13px;
+  text-align: center;
+  border-left: 3px solid #6fa8ff;
+}
+.hud-hint b {
+  color: #9cc4ff;
+}
+.hud-hint.toast {
+  border-left-color: #ffd36a;
+  color: #ffe3a0;
+  letter-spacing: 0.05em;
+}
+.hud-legend {
+  display: none;
+  position: absolute;
+  left: 16px;
+  top: 232px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.82);
+  border: 1px solid #fff;
+  color: #ddd;
+  font-size: 11px;
+}
+.hud-legend b {
+  color: #fff;
+  letter-spacing: 0.15em;
+}
+.hud-legend span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hud-legend i {
+  display: inline-block;
+  width: 22px;
+  height: 10px;
+  background: #000;
+  box-sizing: border-box;
+}
+.hud-legend .lg-core {
+  background: #fff;
+}
+.hud-legend .lg-live {
+  height: 4px;
+  background: #fff;
+}
+.hud-legend .lg-dead {
+  height: 0;
+  border-top: 4px dashed #ccc;
+}
+.hud-legend .lg-sock {
+  border: 1px solid #ccc;
+  background: radial-gradient(circle, #fff 1px, transparent 1.5px) 0 0 / 4px 4px, #000;
+}
+.hud-legend .lg-tough {
+  border: 1px solid #aaa;
+  background: repeating-linear-gradient(-45deg, #999 0 1px, #000 1px 5px);
+}
+.hud-legend .lg-cav {
+  border: 2px solid #fff;
+}

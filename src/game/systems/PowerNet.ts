@@ -37,6 +37,7 @@ export class PowerNet {
   readonly lights: Light[] = [];
   /** Re-floods so far (tests). */
   floods = 0;
+  private spots: { x: number; y: number; live: boolean; i: number }[] | null = null;
 
   constructor(private readonly world: PixelWorld) {
     this.scan({ x0: 0, y0: 0, x1: world.terrain.grid.w, y1: world.terrain.grid.h });
@@ -46,6 +47,7 @@ export class PowerNet {
   terrainChanged(r: Rect): void {
     this.scan(r);
     this.dirty = true;
+    this.spots = null;
   }
 
   private scan(r: Rect): void {
@@ -57,6 +59,30 @@ export class PowerNet {
         if (m === M.POWER) this.cores.add(i);
         else if (m === M.SOCKET) this.sockets.add(i);
       }
+  }
+
+  /**
+   * Wall sockets, one spot per cluster of socket cells (world meters), and whether each is
+   * live. Dead ones get a slow blue beacon so they can be found in the dark.
+   */
+  socketSpots(): readonly { x: number; y: number; live: boolean }[] {
+    const g = this.world.terrain.grid;
+    if (!this.spots) {
+      const buckets = new Map<number, { x: number; y: number; n: number; i: number }>();
+      for (const i of this.sockets) {
+        const x = i % g.w;
+        const y = (i - x) / g.w;
+        const key = Math.floor(x / LIGHT_BUCKET) * 65536 + Math.floor(y / LIGHT_BUCKET);
+        let b = buckets.get(key);
+        if (!b) buckets.set(key, (b = { x: 0, y: 0, n: 0, i }));
+        b.x += x + 0.5;
+        b.y += y + 0.5;
+        b.n++;
+      }
+      this.spots = [...buckets.values()].map((b) => ({ x: (b.x / b.n) * CELL, y: (b.y / b.n) * CELL, live: false, i: b.i }));
+    }
+    for (const sp of this.spots) sp.live = g.powered[sp.i] === 1;
+    return this.spots;
   }
 
   /** Is terrain cell (x, y) powered? */
@@ -148,7 +174,8 @@ export class PowerNet {
   }
 }
 
-function hasPower(b: PixelBody): boolean {
+/** Does a loose body carry a power core (a battery, a robot core, a wreck)? */
+export function hasPower(b: PixelBody): boolean {
   const m = b.grid.mat;
   for (let i = 0; i < m.length; i++) if (m[i] === M.POWER) return true;
   return false;

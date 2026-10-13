@@ -457,8 +457,27 @@ export class PixelWorld {
     b.rebuildColliders();
   }
 
+  /**
+   * Tears `cells` out of a body as a new body of their own (a harpooned core yanked out of a
+   * robot). `tear` cells are torn to debris first (the channel it leaves by). What's left is
+   * re-checked for splits like a cut. Null if too small to be a body.
+   */
+  extract(src: PixelBody, cells: number[], tear: number[] = []): PixelBody | null {
+    const sg = src.grid;
+    for (const i of tear) {
+      const x = i % sg.w;
+      if (sg.mat[i]) this.emitCell(src, x, (i - x) / sg.w, sg.mat[i], sg.shade[i]);
+    }
+    sg.clearCells(tear);
+    const b = this.spawnFromCells(src, cells);
+    if (src.grid.countSolid() > 0) src.rebuildColliders(); // before the next step: no overlap
+    src.needsSplitCheck = true;
+    return b;
+  }
+
   /** Moves cells out of `src` into a new body (or debris particles if tiny). */
-  private spawnFromCells(src: PixelObject, cells: number[]): void {
+  private spawnFromCells(src: PixelObject, cells: number[]): PixelBody | null {
+    let nb: PixelBody | null = null;
     const sg = src.grid;
     let minX = Infinity;
     let minY = Infinity;
@@ -498,7 +517,7 @@ export class PixelWorld {
         init.vy = v.y;
         init.w = pb.body.angvel();
       }
-      this.addBody(g, init);
+      nb = this.addBody(g, init);
     }
     sg.clearCells(cells);
     const rect = { x0: minX, y0: minY, x1: maxX + 1, y1: maxY + 1 };
@@ -507,6 +526,7 @@ export class PixelWorld {
       this.terrain.markCollidersDirty(rect);
       this.events.terrainChanged?.(rect, true);
     }
+    return nb;
   }
 
   dispose(): void {

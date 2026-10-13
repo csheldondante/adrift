@@ -15,9 +15,16 @@
 // The ship-side anchor is configurable (tune.grapple.pivot, P to toggle): at the center of
 // mass the tether never torques the ship; at the nose, tension swings the ship's heading.
 //
+// Stealing power: a harpoon that bites within reach of a body's red power core (a robot's,
+// a wreck's) hooks the core itself. Winch in (hold RMB) and the core tears out of its housing
+// as a loose body of its own, still on the line, still live: the robot it powered goes dead
+// and drifts, and the core can be hauled to a wall socket. The tear happens when the line
+// pulls hard (tune.grapple.ripTension) or the winch brings you up against the body.
+//
 // Likely growth: different heads (magnetic, barbed), tying two objects together, rope cutting.
 
 import { CELL, tune } from '../config';
+import { M } from '../pixel/materials';
 import type { PixelBody } from '../pixel/PixelBody';
 import type { PixelObject } from '../pixel/PixelObject';
 import { ORDER } from '../render/order';
@@ -95,6 +102,11 @@ export class Grapple implements Tool {
   private winching = false;
   private clampJoint: import('@dimforge/rapier2d-compat').ImpulseJoint | null = null;
   private pivotMode = tune.grapple.pivot;
+  /** The harpoon bit next to a power core it can tear out (see header). */
+  coreHooked = false;
+  private ripT = 0;
+  /** Cores torn out so far (tests). */
+  rips = 0;
   private readonly ribbons: Ribbon[] = [];
   private readonly claw = [new Ribbon(0xe8f4ff, ORDER.fx + 1), new Ribbon(0xe8f4ff, ORDER.fx + 1)];
   private readonly pts: P[] = [];
@@ -212,6 +224,103 @@ export class Grapple implements Tool {
     return best;
   }
 
+  /**
+   * The power core within reach of the anchor (POWER cells within ~0.9 m, and every POWER
+   * cell joined to them), or null. Not when the body is mostly core already (a battery) or
+   * is the salvage.
+   */
+  private coreNear(b: PixelBody): number[] | null {
+    if (b.tags.salvage) return null;
+    const g = b.grid;
+    const R = 7;
+    const seen = new Uint8Array(g.w * g.h);
+    const stack: number[] = [];
+    for (let y = Math.floor(this.anchorCellY - R); y <= this.anchorCellY + R; y++)
+      for (let x = Math.floor(this.anchorCellX - R); x <= this.anchorCellX + R; x++) {
+        if (!g.inside(x, y) || (x + 0.5 - this.anchorCellX) ** 2 + (y + 0.5 - this.anchorCellY) ** 2 > R * R) continue;
+        const i = y * g.w + x;
+        if (g.mat[i] === M.POWER && !seen[i]) {
+          seen[i] = 1;
+          stack.push(i);
+        }
+      }
+    const cells: number[] = [];
+    while (stack.length) {
+      const i = stack.pop()!;
+      cells.push(i);
+      const x = i % g.w;
+      const y = (i - x) / g.w;
+      for (const [nx, ny] of [
+        [x - 1, y],
+        [x + 1, y],
+        [x, y - 1],
+        [x, y + 1],
+      ]) {
+        const j = ny * g.w + nx;
+        if (g.inside(nx, ny) && !seen[j] && g.mat[j] === M.POWER) {
+          seen[j] = 1;
+          stack.push(j);
+        }
+      }
+    }
+    if (!cells.length || cells.length > g.countSolid() * 0.6) return null;
+    return cells;
+  }
+
+  /** Tears the hooked core out of `b` and moves the line onto it. False if there's none left. */
+  private rip(b: PixelBody): boolean {
+    const { ctx } = this;
+    const cells = this.coreNear(b);
+    this.coreHooked = false;
+    if (!cells) return false;
+    const at = b.localToWorld(this.anchorCellX, this.anchorCellY, { x: 0, y: 0 });
+    // it leaves along the line, tearing a channel its own width through whatever is in the way
+    const s = this.shipAnchorWorld({ x: 0, y: 0 });
+    const far = b.worldToLocal(s.x, s.y, { x: 0, y: 0 });
+    const near = b.worldToLocal(at.x, at.y, { x: 0, y: 0 });
+    const ld = Math.max(1e-3, Math.hypot(far.x - near.x, far.y - near.y));
+    const ux = (far.x - near.x) / ld;
+    const uy = (far.y - near.y) / ld;
+    const g = b.grid;
+    const tear = new Set<number>();
+    const isCore = new Set(cells);
+    for (const i of cells) {
+      const cx = (i % g.w) + 0.5;
+      const cy = Math.floor(i / g.w) + 0.5;
+      for (let k = 0.5; ; k += 0.5) {
+        const x = Math.floor(cx + ux * k);
+        const y = Math.floor(cy + uy * k);
+        if (!g.inside(x, y)) break;
+        const j = y * g.w + x;
+        if (g.mat[j] && !isCore.has(j)) tear.add(j);
+      }
+    }
+    const core = ctx.pixels.extract(b, cells, [...tear]);
+    if (!core) return false;
+    core.tags.label = 'power core';
+    core.worldToLocal(at.x, at.y, tmp);
+    const cell = this.nearestSolid(core, tmp.x, tmp.y, 12);
+    if (!cell) {
+      this.detach();
+      return true;
+    }
+    this.target = core;
+    this.anchorCellX = cell.x;
+    this.anchorCellY = cell.y;
+    this.rope!.setTarget({ body: core.body, local: { x: cell.x * CELL, y: cell.y * CELL } });
+    // it comes away toward the line, with a spray of sparks
+    const dx = s.x - at.x;
+    const dy = s.y - at.y;
+    const d = Math.max(1e-3, Math.hypot(dx, dy));
+    const m = core.body.mass();
+    core.body.applyImpulse({ x: (dx / d) * m * 2.5, y: (dy / d) * m * 2.5 }, true);
+    for (let k = 0; k < 18; k++) ctx.particles.spark(at.x, at.y, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, 0.5, 0.09, 0.6);
+    ctx.sound.emit('thunk', at.x, at.y, 1, [b]);
+    ctx.stage.shake(0.2);
+    this.rips++;
+    return true;
+  }
+
   /** Swept harpoon flight: thunk into the first matter along the step, or give up at range. */
   private flyStep(dt: number): void {
     const sp = Math.hypot(this.hvx, this.hvy);
@@ -255,6 +364,8 @@ export class Grapple implements Tool {
     this.state = 'attached';
     this.tightening = true;
     this.tensionAvg = 0;
+    this.ripT = 0;
+    this.coreHooked = isBody && this.coreNear(target as PixelBody) !== null;
     // thunk FX; the bite is heard up the line
     const sv = ctx.ship.body.linvel();
     ctx.sound.emit('thunk', px, py, Math.min(1, Math.hypot(this.hvx - sv.x, this.hvy - sv.y) / 70), [target]);
@@ -276,6 +387,7 @@ export class Grapple implements Tool {
     this.rope?.destroy();
     this.rope = null;
     this.target = null;
+    this.coreHooked = false;
     this.state = 'idle';
     this.tightening = false;
     for (const r of this.ribbons) r.hide();
@@ -354,6 +466,11 @@ export class Grapple implements Tool {
       // impact speed (it is still real physics: hit something else on the way and it hurts)
       const speed = Math.min(g.winchSpeed, Math.max(1.0, (rope.length - g.minLength) * 1.2));
       rope.setLength(Math.max(g.minLength, rope.length - speed * dt));
+    }
+    // a hooked core tears out under a hard pull, or when the winch drags you up against it
+    if (this.coreHooked) {
+      this.ripT = rope.tension > g.ripTension ? this.ripT + dt : 0;
+      if ((this.ripT > 0.15 || (this.winching && this.touching(t))) && this.rip(t as PixelBody)) return true;
     }
     // touching what we're tethered to while winching (or fully reeled in): clamp on
     if ((this.winching || rope.length <= g.minLength + 0.5) && this.touching(t)) {
@@ -528,6 +645,7 @@ export class Grapple implements Tool {
       case 'retracting':
         return `missed · ${pivot}`;
       default:
+        if (this.coreHooked) return `core hooked · hold RMB: rip it out`;
         return `${this.length.toFixed(1)} m${this.tension > 0 ? ` · ${(this.tension / 1000).toFixed(1)} kN` : ' · slack'} · ${pivot}`;
     }
   }

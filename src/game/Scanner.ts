@@ -1,11 +1,14 @@
 // Vibration scan: knock on the structure you're touching and listen to what comes back.
 // A pulse spreads from the contact point through solid matter only (like conducted sound:
-// it doesn't cross gaps), up to a radius, and briefly lights up what it passed through:
-//   - power and systems in the walls: cores, conduits, sockets, pumps, fixtures, fuel
-//   - tough material (burns only at white heat: frame, armor, pressure doors) as a dim fill,
-//     so you can tell what's worth cutting before you commit the laser
-//   - the outline of every surface it reached, which shows hidden cavities behind walls
-// The ring expands at about 45 m/s, then the picture fades over a few seconds.
+// it doesn't cross gaps), up to a radius, and draws what it passed through as a black and
+// white schematic over the walls (an x-ray of the structure):
+//   - every surface it reached as a bright line: wall faces, and hidden cavities behind them
+//   - boundaries between materials as finer lines, with a 1 m drafting grid in plain structure
+//   - tough material (burns only at white heat: frame, armor, pressure doors) hatched
+//   - systems by pattern: cores solid white; power lines solid when live, dashed when dead;
+//     sockets solid when live, dotted when dead; pumps cross-hatched; fixtures and eyes
+//     dotted; fuel ruled; thrusters and weapons lined
+// A bright ring runs out at about 45 m/s, then the picture holds and fades.
 //
 // Footfalls while hull-walking send small pulses; V knocks a strong one (anything you're
 // touching). The overlay is drawn after the darkness, so it reads in the dark.
@@ -21,38 +24,78 @@ import { ORDER } from '../render/order';
 
 interface Pulse {
   obj: PixelObject;
-  x0: number; // window origin in obj cells
-  y0: number;
-  w: number;
-  h: number;
-  /** Path length through matter to each window cell (cells), -1 if not reached. */
+  /** Window cells in the order the pulse reached them (sorted by distance). */
+  order: Int32Array;
+  /** Path length through matter (cells) of each entry of `order`. */
   dist: Float32Array;
-  /** Feature color per window cell (ABGR), 0 = nothing to show. */
-  color: Uint32Array;
-  data: Uint8Array;
+  /** Finished schematic, S×S texels per window cell. */
+  img: Uint32Array;
+  w: number; // window width in cells
+  px: Uint32Array; // texture pixels
   tex: THREE.DataTexture;
   mesh: THREE.Mesh;
   age: number;
   reach: number; // cells
   strength: number;
+  shown: number; // entries of `order` drawn so far
+  band: number; // first entry still inside the bright ring front
 }
 
+const S = 3; // texels per cell: room for hairlines inside a cell
 const SPEED = 45 / CELL; // cells per second
-const FADE = 4.5; // s after the ring has finished
-const MAX_PULSES = 6;
+const RING = 2.5; // cells: width of the bright front
+const HOLD = 2.5; // s the finished picture holds
+const FADE = 2.5; // s it then takes to fade
+const MAX_PULSES = 5;
 
-const rgba = (r: number, g: number, b: number, a: number) => ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;
-// what a pulse shows per material (0 = only its surface outline, if any)
-const FEATURE = new Uint32Array(256);
-FEATURE[M.POWER] = rgba(255, 50, 60, 255);
-FEATURE[M.CONDUIT] = rgba(255, 150, 60, 235);
-FEATURE[M.SOCKET] = rgba(90, 170, 255, 255);
-FEATURE[M.PUMP] = rgba(90, 255, 140, 255);
-FEATURE[M.LIGHT] = rgba(255, 230, 140, 220);
-FEATURE[M.FUEL] = rgba(255, 110, 40, 220);
-FEATURE[M.EYE] = rgba(255, 210, 110, 220);
-const EDGE = rgba(80, 220, 255, 150);
-const TOUGH = rgba(150, 120, 255, 55);
+// what each material is on the schematic
+const K = { NONE: 0, STRUCT: 1, TOUGH: 2, CONDUIT: 3, POWER: 4, SOCKET: 5, PUMP: 6, FIXTURE: 7, FUEL: 8, ENGINE: 9, WEAPON: 10 } as const;
+const KIND = new Uint8Array(256);
+for (let m = 1; m < 256; m++) if (MAT_FLAGS[m] & F.SOLID) KIND[m] = MAT_BURN[m] >= 0.85 ? K.TOUGH : K.STRUCT;
+KIND[M.CONDUIT] = K.CONDUIT;
+KIND[M.POWER] = K.POWER;
+KIND[M.SOCKET] = K.SOCKET;
+KIND[M.PUMP] = K.PUMP;
+KIND[M.LIGHT] = K.FIXTURE;
+KIND[M.EYE] = K.FIXTURE;
+KIND[M.FUEL] = K.FUEL;
+KIND[M.THRUSTER] = K.ENGINE;
+KIND[M.WEAPON] = K.WEAPON;
+/** Systems worth reporting (tests): cores, lines, sockets, pumps, fixtures, fuel. */
+const FEATURE = (k: number) => k === K.CONDUIT || k === K.POWER || k === K.SOCKET || k === K.PUMP || k === K.FIXTURE || k === K.FUEL;
+
+const grey = (v: number, a: number) => ((a << 24) | (v << 16) | (v << 8) | v) >>> 0;
+const PAPER = grey(0, 228); // the black fill over the walls
+const RING_PX = grey(255, 210);
+
+/** Grey level of a texel inside a cell of kind k, or -1 for plain paper. */
+function pattern(k: number, live: boolean, x: number, y: number, sx: number, sy: number): number {
+  const tx = x * S + sx; // object texel coords, so patterns run on across cells
+  const ty = y * S + sy;
+  switch (k) {
+    case K.STRUCT:
+      return (x % 8 === 0 && sx === 0) || (y % 8 === 0 && sy === 0) ? 48 : -1; // 1 m drafting grid
+    case K.TOUGH:
+      return (tx + ty) % 5 === 0 ? 150 : -1;
+    case K.CONDUIT:
+      return live ? 255 : (((tx + ty) / (2 * S)) | 0) & 1 ? 200 : -1;
+    case K.POWER:
+      return 255;
+    case K.SOCKET:
+      return live || (sx === 1 && sy === 1) ? 255 : -1;
+    case K.PUMP:
+      return (tx + ty) % 4 === 0 || (tx - ty + 4096) % 4 === 0 ? (live ? 255 : 130) : -1;
+    case K.FIXTURE:
+      return sx === 1 && sy === 1 ? (live ? 255 : 130) : -1;
+    case K.FUEL:
+      return ty % 3 === 0 ? 170 : -1;
+    case K.ENGINE:
+      return tx % 3 === 0 ? (live ? 230 : 110) : -1;
+    case K.WEAPON:
+      return tx % 3 === 0 || ty % 3 === 0 ? (live ? 230 : 110) : -1;
+  }
+  return -1;
+}
 
 export class Scanner {
   private readonly pulses: Pulse[] = [];
@@ -60,9 +103,14 @@ export class Scanner {
   sent = 0;
   readonly history: { reached: number; features: number; strength: number }[] = [];
 
+  /** A knock's schematic is on screen (HUD legend). */
+  get showing(): boolean {
+    return this.pulses.some((p) => p.strength >= 0.9);
+  }
+
   /**
    * Sends a pulse into `obj` from world point (wx, wy), reaching `radius` meters through its
-   * matter. Strength 0..1 scales brightness.
+   * matter. Strength 0..1 scales opacity.
    */
   ping(obj: PixelObject, wx: number, wy: number, radius: number, strength: number): void {
     const g = obj.grid;
@@ -88,55 +136,78 @@ export class Scanner {
     const y0 = Math.max(0, sy - reach);
     const w = Math.min(g.w, sx + reach + 1) - x0;
     const h = Math.min(g.h, sy + reach + 1) - y0;
-    const dist = new Float32Array(w * h).fill(-1);
-    const color = new Uint32Array(w * h);
+    const seen = new Uint8Array(w * h);
+    const order: number[] = [];
+    const dist: number[] = [];
     // breadth-first through solid cells: distance = path length through the matter
     let frontier = [(sy - y0) * w + (sx - x0)];
-    dist[frontier[0]] = 0;
+    seen[frontier[0]] = 1;
     let features = 0;
-    let reached = 0;
     for (let step = 0; frontier.length && step <= reach; step++) {
       const next: number[] = [];
       for (const k of frontier) {
+        order.push(k);
+        dist.push(step);
         const lx = k % w;
         const ly = (k - lx) / w;
-        const gi = (ly + y0) * g.w + lx + x0;
-        const m = g.mat[gi];
-        reached++;
-        let c = FEATURE[m];
-        if (c) features++;
-        else if (MAT_BURN[m] >= 0.85) c = TOUGH;
-        // an open side: a surface (a wall face, or the inside of a hidden cavity)
-        if (!FEATURE[m] && (!g.solid(lx + x0 - 1, ly + y0) || !g.solid(lx + x0 + 1, ly + y0) || !g.solid(lx + x0, ly + y0 - 1) || !g.solid(lx + x0, ly + y0 + 1))) c = EDGE;
-        color[k] = c;
+        if (FEATURE(KIND[g.mat[(ly + y0) * g.w + lx + x0]])) features++;
         for (let d = 0; d < 4; d++) {
           const nx = lx + (d === 0 ? -1 : d === 1 ? 1 : 0);
           const ny = ly + (d === 2 ? -1 : d === 3 ? 1 : 0);
           if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
           const j = ny * w + nx;
-          if (dist[j] >= 0 || !(MAT_FLAGS[g.mat[(ny + y0) * g.w + nx + x0]] & F.SOLID)) continue;
-          dist[j] = step + 1;
+          if (seen[j] || !(MAT_FLAGS[g.mat[(ny + y0) * g.w + nx + x0]] & F.SOLID)) continue;
+          seen[j] = 1;
           next.push(j);
         }
       }
       frontier = next;
     }
     this.sent++;
-    this.history.push({ reached, features, strength });
+    this.history.push({ reached: order.length, features, strength });
     if (this.history.length > 8) this.history.shift();
-    const data = new Uint8Array(w * h * 4);
-    const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
+
+    // draw the finished schematic once; frames only reveal it
+    const tw = w * S;
+    const img = new Uint32Array(tw * h * S);
+    const kindAt = (x: number, y: number) => (g.inside(x, y) ? KIND[g.mat[y * g.w + x]] : K.NONE);
+    for (const k of order) {
+      const lx = k % w;
+      const ly = (k - lx) / w;
+      const x = lx + x0;
+      const y = ly + y0;
+      const gi = y * g.w + x;
+      const kind = KIND[g.mat[gi]];
+      const live = g.powered[gi] === 1;
+      const nl = kindAt(x - 1, y);
+      const nr = kindAt(x + 1, y);
+      const nd = kindAt(x, y - 1);
+      const nu = kindAt(x, y + 1);
+      for (let ty = 0; ty < S; ty++)
+        for (let tx = 0; tx < S; tx++) {
+          // outlines: surfaces bright, boundaries between materials finer
+          let edge = -1;
+          if (tx === 0 && nl !== kind) edge = nl === K.NONE ? 255 : 175;
+          if (tx === S - 1 && nr !== kind) edge = Math.max(edge, nr === K.NONE ? 255 : 175);
+          if (ty === 0 && nd !== kind) edge = Math.max(edge, nd === K.NONE ? 255 : 175);
+          if (ty === S - 1 && nu !== kind) edge = Math.max(edge, nu === K.NONE ? 255 : 175);
+          const v = edge >= 0 ? edge : pattern(kind, live, x, y, tx, ty);
+          img[(ly * S + ty) * tw + lx * S + tx] = v >= 0 ? grey(v, 255) : PAPER;
+        }
+    }
+    const data = new Uint8Array(img.length * 4);
+    const tex = new THREE.DataTexture(data, tw, h * S, THREE.RGBAFormat);
     tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.LinearFilter;
     tex.colorSpace = THREE.SRGBColorSpace;
     const geo = new THREE.PlaneGeometry(w * CELL, h * CELL);
     geo.translate((x0 + w / 2) * CELL, (y0 + h / 2) * CELL, 0);
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false });
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.renderOrder = ORDER.glow;
     mesh.frustumCulled = false;
     obj.view.object.add(mesh); // rides along with a moving body
-    this.pulses.push({ obj, x0, y0, w, h, dist, color, data, tex, mesh, age: 0, reach, strength });
+    this.pulses.push({ obj, order: Int32Array.from(order), dist: Float32Array.from(dist), img, w, px: new Uint32Array(data.buffer), tex, mesh, age: 0, reach, strength, shown: 0, band: 0 });
     while (this.pulses.length > MAX_PULSES) this.drop(0);
   }
 
@@ -145,29 +216,35 @@ export class Scanner {
       const p = this.pulses[i];
       p.age += dt;
       const front = p.age * SPEED;
-      const ringDone = front > p.reach + 8;
-      const fade = ringDone ? 1 - (p.age - (p.reach + 8) / SPEED) / FADE : 1;
+      const done = p.age - (p.reach + RING) / SPEED; // s since the ring ran out
+      const fade = done < HOLD ? 1 : 1 - (done - HOLD) / FADE;
       if (fade <= 0 || (p.obj as { alive?: boolean }).alive === false) {
         this.drop(i);
         continue;
       }
-      (p.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, fade) * p.strength;
-      if (ringDone && p.age - dt > (p.reach + 8) / SPEED) continue; // static now, only fading
-      // reveal up to the ring front, brightest right behind it
-      const px = new Uint32Array(p.data.buffer);
-      for (let k = 0; k < p.color.length; k++) {
-        const d = p.dist[k];
-        const c = p.color[k];
-        if (d < 0 || !c || d > front) {
-          px[k] = 0;
-          continue;
-        }
-        const behind = front - d;
-        const boost = behind < 6 ? 1 + (6 - behind) / 6 : 1;
-        const a = Math.min(255, ((c >>> 24) & 255) * boost);
-        px[k] = ((a << 24) | (c & 0xffffff)) >>> 0;
-      }
+      (p.mesh.material as THREE.MeshBasicMaterial).opacity = fade * p.strength;
+      if (p.band >= p.order.length) continue; // fully drawn, only fading
+      // reveal up to the ring front, with the front itself drawn bright
+      let shown = p.shown;
+      while (shown < p.order.length && p.dist[shown] <= front) shown++;
+      let band = p.band;
+      while (band < shown && p.dist[band] <= front - RING) band++;
+      if (front > p.reach + RING) band = shown = p.order.length;
+      for (let e = p.band; e < shown; e++) this.blit(p, p.order[e], e >= band);
+      p.shown = shown;
+      p.band = band;
       p.tex.needsUpdate = true;
+    }
+  }
+
+  /** Copies one window cell's block of the schematic (or the ring) to the texture. */
+  private blit(p: Pulse, k: number, ring: boolean): void {
+    const lx = k % p.w;
+    const ly = (k - lx) / p.w;
+    const tw = p.w * S;
+    for (let ty = 0; ty < S; ty++) {
+      const row = (ly * S + ty) * tw + lx * S;
+      for (let tx = 0; tx < S; tx++) p.px[row + tx] = ring ? RING_PX : p.img[row + tx];
     }
   }
 

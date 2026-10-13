@@ -404,6 +404,9 @@ export class Game {
     const z = this.objective.zone;
     out.push({ x: (z.x0 + z.x1) / 2, y: (z.y0 + z.y1) / 2, dirX: 0, dirY: 0, cosHalf: -2, range: Math.max(z.x1 - z.x0, z.y1 - z.y0) * 0.8, intensity: 0.45, r: 0.35, g: 1, b: 0.5 });
     for (const l of this.power.lights) out.push(l);
+    // dead sockets pulse a slow blue so you can find them in the dark
+    const beat = 0.5 + 0.5 * Math.sin(this.time * 3);
+    for (const sp of this.power.socketSpots()) if (!sp.live) out.push({ x: sp.x, y: sp.y, dirX: 0, dirY: 0, cosHalf: -2, range: 7, intensity: 0.2 + 0.5 * beat, r: 0.3, g: 0.6, b: 1, skin: 0.8 });
     for (const f of this.fixedLights) {
       // mostly steady with a slow wobble, and every so often a brief dropout
       const t = this.time + f.phase;
@@ -466,7 +469,7 @@ export class Game {
     this.footPingT -= dt;
     if (this.walk.attached && arms.landed.length && this.footPingT <= 0) {
       const l = arms.landed[0];
-      this.scanner.ping(this.walk.surfaceBody ?? this.pixels.terrain, l.x, l.y, 5, 0.45);
+      this.scanner.ping(this.walk.surfaceBody ?? this.pixels.terrain, l.x, l.y, 6, 0.75);
       this.footPingT = 0.45;
     }
     arms.landed.length = 0;
@@ -484,7 +487,7 @@ export class Game {
       hy = sh.y - this.walk.ny * this.walk.gap;
     } else {
       // nearest matter within arm's reach
-      let best = 2.8;
+      let best = 4;
       for (let k = 0; k < 12; k++) {
         const a = (k / 12) * Math.PI * 2;
         const hit = this.pixels.raycast(sh.x, sh.y, Math.cos(a), Math.sin(a), best);

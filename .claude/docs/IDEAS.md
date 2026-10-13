@@ -11,6 +11,13 @@ Built decisions and their rationale live in `docs/DECISIONS.md`. This file is fo
 
 ---
 
+## Playtest 2 notes (user, 2026-10-13)
+
+- **Unclear what power cores are for.** Status: *built* (2026-10-13): context hints, blue beacons on dead sockets, a "power restored" notice. See DECISIONS.
+- **Pulse from the surface, see a black and white schematic of the walls.** Status: *built* (2026-10-13): the scan is now a monochrome x-ray schematic.
+- **Couldn't remove enemy power cores.** Status: *built* (2026-10-13): harpoon near the core, then winch to tear it out.
+- **Airlocks:** doors you can open and close, double doors that keep pressure in, and systems that re-pressurize once a seal is made. Status: *exploring*.
+
 ## Making it a game: playtest notes and roadmap (user, 2026-10-12)
 
 **Status:** in progress. A (materials and heat), B (robots with powered organs), C (power and pressure in the walls, `?level=lab`) D (the hand-built "Lantern" level, now the default), E (vibration scan: V, footfalls), F (round probe hull, cutter arm, winch hub) and G (curious bots that circle oddly moving junk; Lantern's scanner gallery) built 2026-10-12; see DECISIONS. All seven milestones are in; next comes playtest feedback.

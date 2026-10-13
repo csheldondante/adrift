@@ -53,6 +53,7 @@ export const tune = {
     winchSpeed: 4, // m/s winch while RMB is held (slow enough that docking is under the safe impact speed)
     holdToWinch: 0.18, // s: RMB held longer than this winches; a shorter click releases
     retractSpeed: 60, // m/s head returning after a miss
+    ripTension: 900, // N: a hooked power core tears out of its housing past this pull
     snugTension: 400, // N sustained pretension at which the fast winch hands over to take-up
     autoTakeUp: true, // keep reeling in slack while attached (rope stays straight); E pays out
     takeUpSpeed: 4, // m/s take-up winch

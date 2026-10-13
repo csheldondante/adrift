@@ -4,6 +4,7 @@
 import { tune } from '../config';
 import type { Game } from '../game/Game';
 import type { Stage } from '../render/Stage';
+import { hintFor } from './hints';
 
 const tmp = { x: 0, y: 0 };
 
@@ -29,6 +30,10 @@ export class Hud {
   private readonly help: HTMLDivElement;
   private readonly velArrow: HTMLDivElement;
   private readonly markers: { el: HTMLDivElement; label: string }[];
+  private readonly hint: HTMLDivElement;
+  private readonly legend: HTMLDivElement;
+  private live = -1;
+  private toastUntil = 0;
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'hud', parent);
@@ -53,6 +58,13 @@ export class Hud {
        <b>V</b> knock: vibration scan of what you touch (walking scans too) · <b>LMB</b> cutter (heats until it burns; hot metal pressed together welds) · <b>RMB</b> harpoon · click again: let go · hold: winch in &amp; clamp on contact<br>
        <b>E</b> let go of what the arms hold · clamp to hull / let go · drift slowly into debris: the arms catch it · <b>A/D</b> walk · <b>Space</b> push off · <b>Q</b> pay out tether · <b>M</b> mute · 
 <b>P</b> rope pivot COM/nose · <b>Wheel</b> zoom · <b>R</b> restart · <b>H</b> hide help · <b>\`</b> debug panel`,
+    );
+    this.hint = el('div', 'hud-hint', this.root);
+    this.legend = el(
+      'div',
+      'hud-legend',
+      this.root,
+      `<b>SCAN</b><span><i class="lg-core"></i>power core</span><span><i class="lg-live"></i>live line</span><span><i class="lg-dead"></i>dead line</span><span><i class="lg-sock"></i>socket (dotted: dead)</span><span><i class="lg-tough"></i>tough: cuts only white-hot</span><span><i class="lg-cav"></i>surface / hidden cavity</span>`,
     );
     this.markers = [
       { el: el('div', 'hud-marker salvage', this.root), label: 'CORE' },
@@ -101,6 +113,17 @@ export class Hud {
     else if (!game.ship.alive) this.showBanner(game.ship.deathCause === 'crushed' ? 'CRUSHED' : 'SHIP DESTROYED', 'press R to restart', 'lose');
     else if (obj.state === 'lost') this.showBanner('CORE LOST', 'press R to restart', 'lose');
     else this.banner.style.display = 'none';
+
+    // what the thing in front of you is for; a power-restored notice beats it for a moment
+    const live = game.power.live;
+    if (this.live >= 0 && live > this.live) this.toastUntil = game.time + 3;
+    this.live = live;
+    const toast = game.time < this.toastUntil;
+    const hint = toast ? 'POWER RESTORED: lights, doors and pumps on that line are running' : hintFor(game);
+    this.hint.style.display = hint ? 'block' : 'none';
+    this.hint.classList.toggle('toast', toast);
+    if (this.hint.innerHTML !== hint) this.hint.innerHTML = hint;
+    this.legend.style.display = game.scanner.showing ? 'flex' : 'none';
 
     // security: alarm countdown, or a "watched" meter while a bot is getting suspicious
     const sec = game.security;

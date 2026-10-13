@@ -2,6 +2,42 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-13 — Schematic scan, tearing cores out with the harpoon, contextual hints
+
+Playtest notes (2026-10-13):
+- "It wasn't really clear what to do with the power cores."
+- "The graphics would be cooler if you could send out pulses when on the surface and see a black and white schematic of what's going on in the walls."
+- "It didn't really seem possible to remove the power core of enemies."
+
+**Decision:**
+- **The scan is a black and white schematic** drawn over the walls it reached, like an x-ray. The colored additive glow is gone.
+  - It renders at 3 texels per cell, so hairlines fit inside a cell.
+  - Surfaces are bright lines, which outline hidden cavities. Boundaries between materials are finer lines, and plain structure gets a 1 m drafting grid.
+  - Tough material is hatched.
+  - Systems are told apart by pattern, not color:
+    - cores solid white;
+    - power lines solid when live, dashed when dead;
+    - sockets solid when live, dotted when dead;
+    - pumps cross-hatched, fixtures dotted, fuel ruled.
+  - So the scan answers "is this line live, and where does it go".
+  - A bright ring runs out at 45 m/s. The picture holds 2.5 s, then fades.
+  - The finished image is drawn once per pulse, and frames only reveal it in reach order.
+  - Footfall pulses are stronger (6 m, 0.75), and a knock now reaches things within 4 m.
+  - A legend shows while a knock's schematic is up.
+- **The harpoon tears out power cores.**
+  - Why: cutting a core free with the laser was nearly impossible in play. The core is softer than its housing, so the beam ate the core along with the cut, and on a moving robot.
+  - Rule: a harpoon that bites within about 0.9 m of a body's POWER cells hooks the core. Hold RMB to winch; the core comes out when the line pulls past `ripTension` (900 N) or the winch drags you against the body.
+  - The core leaves along the line. The cells in its path are torn to debris, so it isn't extracted inside its own housing; an early version was, and physics shoved the overlap apart hard enough to smash it.
+  - The core keeps its power. The robot dies of core loss and drifts. The core arrives on the line or in the arms.
+  - This is the "take power from enemies with the grappling hook" ask. The front armor still matters, because you need a bite near the core: from the rear, or from close above or below.
+  - Measured: hooked about 0.1 s after firing, torn out about 0.2 s later, core intact (20/20 cells) in repeated runs.
+- **Hints and beacons** (`ui/hints.ts`): one context line, from game state.
+  - It covers: a core is hooked; a live core is in tow (with or without a dead socket nearby); a dead socket and what feeds it; a wreck with a live core; a shut pressure door and what opens it.
+  - "POWER RESTORED" shows when a socket goes live.
+  - Dead sockets pulse a slow blue light, so you can find them in the dark.
+
+**Revisit if:** the hint text is too hand-holdy once the loop is learned (retire hints after first success), or ripping makes robots too easy (raise `ripTension`, shrink the 7-cell hook radius).
+
 ## 2026-10-12 — Curious sensors and a scanner gallery (milestone G)
 
 Playtest ask: "rooms with lots of scanners where you can hide behind debris to get by but I would make the probes look at debris that is moving oddly and fly around it so the player has to move around the debris to stay hidden."

@@ -7,6 +7,8 @@ import type { Game } from '../game/Game';
 import { M } from '../pixel/materials';
 import { LAB } from '../game/level/lab';
 import { LANTERN } from '../game/level/lantern';
+import type { PixelBody } from '../pixel/PixelBody';
+import { hintFor } from '../ui/hints';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const m = (c: number) => c * CELL;
@@ -600,6 +602,8 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       g.zoom = 22;
       await sleep(250);
       await shot('scan');
+      await sleep(500);
+      await shot('scan-full');
       g.debugCamera = null;
       log('scan', { attached: g.walk.attached, sent: g.scanner.sent, knockReached: knocked.reached, knockFeatures: knocked.features });
       // walking sends small pulses
@@ -762,6 +766,37 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       settle(battery, m(360), m(340));
       await sleep(400);
       log('lab-unplug', { live: g.power.live, light: g.power.powered(LAB.light.x, LAB.light.y), pumping: g.devices.pumping });
+    }
+    if (md === 'rip') {
+      // harpoon a drone from behind next to its core, hold to winch: the core tears out on the
+      // line, still live, and the drone goes dead
+      const g = game();
+      const d = g.security.spawnDrone(25, 50, 0);
+      await sleep(200);
+      const c = d.pb.body.worldCom();
+      place(c.x - 9, c.y, 0);
+      aim(c.x - 0.6, c.y);
+      await sleep(50);
+      let hookedAt = -1;
+      let ripAt = -1;
+      const trace: unknown[] = [];
+      const t0 = performance.now();
+      await hold('Mouse2', 4000, () => {
+        if (hookedAt < 0 && g.grapple.coreHooked) hookedAt = Math.round(performance.now() - t0);
+        if (ripAt < 0 && g.grapple.rips) ripAt = Math.round(performance.now() - t0);
+        const cb = g.pixels.bodies.find((b) => b.tags.label === 'power core');
+        if (ripAt >= 0) trace.push([Math.round(performance.now() - t0), g.grapple.state, cb ? cb.grid.countSolid() : -1, cb ? +Math.hypot(cb.body.worldCom().x - g.ship.x, cb.body.worldCom().y - g.ship.y).toFixed(2) : -1]);
+      });
+      await sleep(400);
+      const tgt = g.grapple.targetObject as PixelBody | null;
+      let powered = 0;
+      if (tgt?.kind === 'pixelBody') for (let i = 0; i < tgt.grid.powered.length; i++) powered += tgt.grid.powered[i];
+      const cores = g.pixels.bodies.filter((b) => b.tags.label === 'power core').map((b) => ({ cells: b.grid.countSolid(), x: +b.body.worldCom().x.toFixed(1), y: +b.body.worldCom().y.toFixed(1) }));
+      log('rip-trace', trace.filter((_, i) => i % 12 === 0 || i > trace.length - 6));
+      log('rip', { state: g.grapple.state, armsHold: g.arms.held?.tags.label ?? null, cores, hookedAt, ripAt, rips: g.grapple.rips, droneAlive: d.alive, cause: d.cause, onLine: tgt?.kind === 'pixelBody' ? (tgt as PixelBody).tags.label : tgt?.kind ?? null, corePoweredCells: powered, hint: hintFor(g) });
+      g.zoom = 14;
+      await sleep(300);
+      await shot('rip');
     }
     if (md === 'organs') {
       // drones are armored at the nose and soft at the back, and their organs need power
