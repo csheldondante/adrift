@@ -13,7 +13,7 @@ Built decisions and their rationale live in `docs/DECISIONS.md`. This file is fo
 
 ## Making it a game: playtest notes and roadmap (user, 2026-10-12)
 
-**Status:** in progress. A (materials and heat), B (robots with powered organs), C (power and pressure in the walls, `?level=lab`) D (the hand-built "Lantern" level, now the default), E (vibration scan: V, footfalls) and F (round probe hull, cutter arm, winch hub) built 2026-10-12; see DECISIONS.
+**Status:** in progress. A (materials and heat), B (robots with powered organs), C (power and pressure in the walls, `?level=lab`) D (the hand-built "Lantern" level, now the default), E (vibration scan: V, footfalls), F (round probe hull, cutter arm, winch hub) and G (curious bots that circle oddly moving junk; Lantern's scanner gallery) built 2026-10-12; see DECISIONS. All seven milestones are in; next comes playtest feedback.
 
 **What works (keep and build on):**
 - The laser cutter: the most fun thing, especially precision cuts.
@@ -200,7 +200,8 @@ These also feed sound by conduction: atmosphere is where you hear things through
 
 ## Known open threads in the current build
 
-- **Levels are bad** (user, 2026-10-11, playing the dark build): the lighting is fun, but the generated levels don't serve it yet. Probably needs colossal hand-shaped spaces, landmarks and puzzle rooms rather than dense room grids.
+- **Levels are bad** (user, 2026-10-11, playing the dark build): the lighting is fun, but the generated levels don't serve it yet. *Addressed by the hand-built Lantern (2026-10-12).* The dungeon generator still has problems: with seed 3, pressurized fuel rooms gust at startup and blow their bots into the tanks.
+- Gas forces only act inside the camera's band (view ± 25 m).
 - Sealed bulkheads stay sealed after an alarm ends.
 - The nav field is only rebuilt when an alarm starts.
 - Drones exist only during alarms.

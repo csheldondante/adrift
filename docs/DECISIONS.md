@@ -2,6 +2,41 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-12 — Curious sensors and a scanner gallery (milestone G)
+
+Playtest ask: "rooms with lots of scanners where you can hide behind debris to get by but I would make the probes look at debris that is moving oddly and fly around it so the player has to move around the debris to stay hidden."
+
+**Decision:**
+- **Oddness.** In zero-g, junk drifts in straight lines, so `Security` tracks each loose body's *unexplained* acceleration.
+  - It is the velocity change per step, minus the gas drag the physics applied. That drag comes from a shared `fields/drag.ts`, so the physics push and the prediction can't disagree.
+  - It is clamped and smoothed over about 0.5 s.
+  - Carried, towed or pushed junk reads several m/s². Junk jostling in a pressurized room reads about 1–2 m/s², and that is after removing the air's own push, which was up to 5 m/s².
+  - A bot reacts above 1.5 m/s².
+- **Investigate.** A patrolling bot that sees odd junk (in its cone, line of sight to it) switches to `investigate`.
+  - It circles the junk at 5.5 m, at 0.55 rad/s, keeping its eye on it, so anything hiding behind gets seen unless you move round it too.
+  - It keeps looking while the junk stays odd, and gives up 7 s after it stops.
+  - Its cone turns pale gold, so you can read what it's doing.
+  - Measured: it reacts to a crate pushed at 3 m/s² within about 0.5 s and circles about 85° in 3.5 s.
+- **Gallery in Lantern,** midway along spine B: two sweeping sentry turrets, a bot circling the room, spine B's bot passing through, and six slowly drifting crates and scrap for cover.
+- **Bots avoid loose bodies.** On patrol they look 3.5 m ahead along their path and sidestep toward the clear side.
+
+**Fixes found along the way:**
+- **A per-frame crash.** Robot lights and vision cones read a body that had been destroyed since the last physics step: a drone smashed during the hangar vent. The per-frame paths now check `pb.alive`.
+- **Air-relative steering is for idle station-keeping only** (an idle drone hovering).
+  - Robots going somewhere (patrol, hunt, investigate) steer in the world frame again and fight wind with their thrusters.
+  - Making everything air-relative let patrol bots ride the dungeon's startup gusts at 12 m/s into fuel tanks.
+  - The hangar vent still works, because its drones are idle.
+- **Robot spawn and patrol points** now need 2 m clear of *any* matter, loose bodies included.
+- **Tests:**
+  - The sneak test judges only the bot you're behind. Other bots legitimately investigate.
+  - The curious test faces its bot into the gallery before placing the crate.
+
+**Known (dungeon only):** with the new generator mix, seed 3 has pressurized fuel rooms that leak hard at startup. The gusts shove whatever is inside, including bots, into the tanks within half a second. This is a dungeon level-design issue, not robot logic. Lantern isn't affected.
+
+**Revisit if:**
+- Investigations feel too sharp or too blind. Tunables: `ODD` 1.5, orbit 5.5 m at 0.55 rad/s.
+- Sensors should also hear you, through the knock or clunk sounds.
+
 ## 2026-10-12 — The probe looks like a probe (milestone F)
 
 Playtest: "The ship itself should look more like a submarine or deep sea probe", following the user's concept art (`C:/Users/cshel/Pictures/ShipConceptArtMockup.png`). The concept shows a round hull with a rotating ring and four articulated arms. The cutter is an arm, and the grapple is a winch.

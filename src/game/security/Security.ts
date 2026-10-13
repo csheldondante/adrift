@@ -14,6 +14,8 @@
 // disabling security by cutting power conduits or destroying a security core.
 
 import { CELL, tune } from '../../config';
+import { dragArea, dragForce } from '../../fields/drag';
+import type { FieldSample } from '../../fields/GasField';
 import { M } from '../../pixel/materials';
 import type { PixelBody } from '../../pixel/PixelBody';
 import type { DoorSpec, EntitySpec, P } from '../level/types';
@@ -24,12 +26,14 @@ import { NavField } from './NavField';
 import { Drone, droneGrid, Robot, SecurityBot, securityBotGrid } from './robots';
 import { Turret } from './Turret';
 
+const air: FieldSample = { gas: 0, heat: 0, vx: 0, vy: 0 };
+const drag = { x: 0, y: 0 };
 const ALERT_TIME = 28;
 const SEAL_RADIUS = 48; // m from the alarm point
 const BAY_RADIUS = 140;
 const DRONES_PER_BAY = 3;
 const MAX_DRONES = 12;
-const BOT_CLEARANCE = 1.5; // m of free space a bot needs around its spawn and patrol points
+const BOT_CLEARANCE = 2.0; // m of free space around robot spawn and patrol points (body radius 1.25 + margin)
 
 interface SealingDoor {
   d: DoorSpec;
@@ -48,6 +52,12 @@ export class Security {
   private readonly sealed = new Set<DoorSpec>();
   private readonly sealing: SealingDoor[] = [];
   alarms = 0;
+  /**
+   * How oddly each loose body is moving (m/s², smoothed). In zero-g, junk drifts in straight
+   * lines; something that keeps accelerating is being carried, towed or pushed. Bots that
+   * see it come and look (SecurityBot 'investigate').
+   */
+  private readonly motion = new WeakMap<PixelBody, { vx: number; vy: number; odd: number }>();
 
   constructor(
     readonly ctx: GameContext,
@@ -76,15 +86,15 @@ export class Security {
     this.nav = new NavField(ctx.pixels.terrain.grid);
   }
 
-  /** Nearest point to (x, y), searching outward up to 10 m, with no terrain within radius r. */
+  /**
+   * Nearest point to (x, y), searching outward up to 10 m, with no matter (terrain or loose
+   * bodies: a bot spawned on a fuel barrel sets it off) within radius r.
+   */
   freeSpot(x: number, y: number, r: number): P {
-    const g = this.ctx.pixels.terrain.grid;
-    const clear = (px: number, py: number) => {
-      const rc = r / CELL;
-      const cx = px / CELL;
-      const cy = py / CELL;
-      for (let yy = Math.floor(cy - rc); yy <= Math.ceil(cy + rc); yy++)
-        for (let xx = Math.floor(cx - rc); xx <= Math.ceil(cx + rc); xx++) if ((xx + 0.5 - cx) ** 2 + (yy + 0.5 - cy) ** 2 <= rc * rc && g.solid(xx, yy)) return false;
+    const px = this.ctx.pixels;
+    const clear = (cx: number, cy: number) => {
+      for (let dy = -r; dy <= r; dy += 0.25)
+        for (let dx = -r; dx <= r; dx += 0.25) if (dx * dx + dy * dy <= r * r && px.objectAt(cx + dx, cy + dy)) return false;
       return true;
     };
     if (clear(x, y)) return { x, y };
@@ -172,7 +182,35 @@ export class Security {
     return hit ? hit.dist : max;
   }
 
+  /** Smoothed unexplained acceleration of a body (m/s²); 0 for bodies not tracked yet. */
+  oddness(b: PixelBody): number {
+    return this.motion.get(b)?.odd ?? 0;
+  }
+
+  private trackMotion(dt: number): void {
+    for (const b of this.ctx.pixels.bodies) {
+      if (b.tags.machine || b.tags.label === 'securityBot' || b.tags.label === 'drone') continue;
+      const v = b.body.linvel();
+      const m = this.motion.get(b);
+      if (!m) {
+        this.motion.set(b, { vx: v.x, vy: v.y, odd: 0 });
+        continue;
+      }
+      // what the air did to it is explained: subtract the drag the physics applied
+      const mass = b.body.mass();
+      const c = b.body.worldCom();
+      this.ctx.field.sample(c.x, c.y, air);
+      const f = dragForce(air, m.vx, m.vy, dragArea(mass), drag);
+      const a = Math.hypot(v.x - m.vx - (f.x / mass) * dt, v.y - m.vy - (f.y / mass) * dt) / dt;
+      // clamped and smoothed (~0.5 s): sustained acceleration counts, a collision spike barely does
+      m.odd += (Math.min(a, 6) - m.odd) * Math.min(1, dt * 2);
+      m.vx = v.x;
+      m.vy = v.y;
+    }
+  }
+
   fixedUpdate(dt: number): void {
+    this.trackMotion(dt);
     if (this.alert) {
       this.alertTimer -= dt;
       if (this.alertTimer <= 0) this.alert = false;

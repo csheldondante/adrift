@@ -507,7 +507,8 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       // robot health over the first seconds of a level (spawn sanity)
       const g = game();
       for (let k = 0; k < 6; k++) {
-        log('bots', g.security.robots.map((r) => [r.alive ? 1 : 0, r.cause, r.pb.alive ? 1 : 0, r.sees ? 1 : 0, +r.thrust.toFixed(2)]));
+        log('bots', g.security.robots.map((r) => [r.alive ? 1 : 0, r.cause, r.pb.alive ? 1 : 0, r.sees ? 1 : 0, +r.thrust.toFixed(2), (r as unknown as { state: string }).state]));
+        log('dead-bots', g.security.robots.filter((r) => !r.pb.alive).map((r) => [+r.spawn.x.toFixed(1), +r.spawn.y.toFixed(1)]), 'explosions', g.hazards.explosions, 'machines', g.machinery.machines.map((mc) => [+mc.center(0).x.toFixed(0), +mc.center(0).y.toFixed(0)]));
         await sleep(500);
       }
     }
@@ -528,6 +529,53 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       await sleep(150);
       await shot('probe');
       input.simulateUp('Mouse0');
+      g.debugCamera = null;
+    }
+    if (md === 'curious') {
+      // ?level=lantern gallery: push a crate across a patrol bot's view (as if carried); the
+      // bot should come and circle it, eye on it
+      const g = game();
+      g.ship.lampOn = false;
+      place(m(1400), m(1320), 0); // out of the way, back in spine B
+      const bot = g.security.robots.find((r) => r.pb.tags.label === 'securityBot' && r.pos.x > m(1560) && r.pos.x < m(1800) && r.pos.y > m(1236)) as unknown as {
+        state: string;
+        pos: { x: number; y: number };
+        pb: { body: { rotation(): number } };
+      };
+      const crate = g.pixels.bodies.find((b) => b.grid.w === 24 && b.grid.h === 18)!;
+      // face the bot toward the middle of the gallery, put the crate 7 m in front of its eye,
+      // and push it sideways steadily
+      const c0 = bot.pos;
+      const G = LANTERN.gallery;
+      const a0 = Math.atan2(m((G[1] + G[3]) / 2) - c0.y, m((G[0] + G[2]) / 2) - c0.x);
+      (bot as unknown as { pb: { body: { setRotation(a: number, w: boolean): void } }; heading: number }).pb.body.setRotation(a0, true);
+      (bot as unknown as { heading: number }).heading = a0;
+      crate.body.setTranslation({ x: c0.x + Math.cos(a0) * 7 - 1.5, y: c0.y + Math.sin(a0) * 7 - 1.1 }, true);
+      crate.body.setLinvel({ x: 0, y: 0 }, true);
+      const t0 = performance.now();
+      let tInv = -1;
+      while (performance.now() - t0 < 2500 && tInv < 0 && crate.alive) {
+        const mass = crate.body.mass();
+        const sx = -Math.sin(a0);
+        const sy = Math.cos(a0);
+        crate.body.applyImpulse({ x: sx * mass * 3 * 0.016, y: sy * mass * 3 * 0.016 }, true);
+        if (bot.state === 'investigate') tInv = Math.round(performance.now() - t0);
+        await sleep(16);
+      }
+      const angles: number[] = [];
+      for (let k = 0; k < 8 && crate.alive; k++) {
+        const c = crate.body.worldCom();
+        const b = bot.pos;
+        angles.push(Math.round((Math.atan2(b.y - c.y, b.x - c.x) * 180) / Math.PI));
+        await sleep(500);
+      }
+      let swept = 0;
+      for (let k = 1; k < angles.length; k++) swept += Math.abs(((angles[k] - angles[k - 1] + 540) % 360) - 180);
+      log('curious', { investigateMs: tInv, state: bot.state, aroundCrateDeg: angles, sweptDeg: swept, alert: g.security.alert });
+      g.zoom = 30;
+      if (crate.alive) g.debugCamera = { x: crate.body.worldCom().x, y: crate.body.worldCom().y };
+      await sleep(200);
+      await shot('curious');
       g.debugCamera = null;
     }
     if (md === 'scan') {
@@ -942,8 +990,9 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       };
       let ang = NaN;
       let c = { x: 0, y: 0 };
+      let chosen: (typeof g.security.robots)[number] | null = null;
       for (const r of g.security.robots) {
-        if (r.pb.tags.label !== 'securityBot' || !r.alive || !r.sees) continue;
+        if (r.pb.tags.label !== 'securityBot' || !r.alive || !r.sees || (r as unknown as { state: string }).state !== 'patrol') continue;
         c = r.pos;
         const a = r.pb.body.rotation() + (front ? 0 : Math.PI);
         for (let k = 0; k < 7; k++) {
@@ -953,7 +1002,10 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
             break;
           }
         }
-        if (!Number.isNaN(ang)) break;
+        if (!Number.isNaN(ang)) {
+          chosen = r;
+          break;
+        }
       }
       if (Number.isNaN(ang)) {
         log(md, { skipped: 'no free spot near a bot' });
@@ -961,7 +1013,12 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       }
       place(c.x + Math.cos(ang) * 7, c.y + Math.sin(ang) * 7, ang + Math.PI);
       aim(c.x, c.y); // the ship steers to face the cursor: keep it on the bot
+      const states = new Set<string>();
+      let botSusp = 0;
       while (performance.now() - t0 < 3000) {
+        const cb = chosen as unknown as { state: string; suspicion: number };
+        states.add(cb.state);
+        botSusp = Math.max(botSusp, cb.suspicion, cb.state === 'hunt' ? 1 : 0);
         maxSusp = Math.max(maxSusp, g.security.suspicion);
         if (g.security.alert && tAlarm < 0) {
           tAlarm = performance.now() - t0;
@@ -970,7 +1027,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         await sleep(16);
       }
       const sealed = (g.security as unknown as { sealed: Set<unknown> }).sealed.size;
-      log(md, { alert: g.security.alert, alarmMs: Math.round(tAlarm), maxSuspicion: +maxSusp.toFixed(2), sealedDoors: sealed, health: Math.round(g.ship.health), cause: g.ship.deathCause });
+      log(md, { alert: g.security.alert, alarmMs: Math.round(tAlarm), maxSuspicion: +maxSusp.toFixed(2), sealedDoors: sealed, health: Math.round(g.ship.health), cause: g.ship.deathCause, thisBot: { maxSuspicion: +botSusp.toFixed(2), states: [...states] } });
     }
     if (md === 'turret') {
       const g = game();

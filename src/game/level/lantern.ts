@@ -11,7 +11,10 @@
 //                                   idle drones and cargo. Its floor is a plate hangar door:
 //                                   cut it (or the window) and everything inside goes out.
 //   Shaft    x1380-1420 y990-1340   45 m straight up, hard corners at both ends.
-//   Spine B  x1380-1940 y1300-1340  70 m, a second patrol bot.
+//   Spine B  x1380-1940 y1300-1340  70 m, a second patrol bot. Midway it opens into:
+//   Gallery  x1560-1800 y1236-1420  a scanner room: sweeping sentries, a bot circling it, and
+//                                   drifting junk to hide behind. Bots come and look at junk
+//                                   that moves oddly (carried, towed), circling it.
 //   Hall     x1940-2060 y1230-1410  socket + fixture on its right wall.
 //   Chamber  x2072-2240 y1240-1400  breached (a hole into the hall), pump, lamp; a pressure
 //                                   door in its right wall to the transit station.
@@ -43,6 +46,7 @@ export const LANTERN = {
   hangar: [1000, 516, 1320, 938] as R,
   shaft: [1380, 990, 1420, 1340] as R,
   spineB: [1380, 1300, 1940, 1340] as R,
+  gallery: [1560, 1236, 1800, 1420] as R,
   hall: [1940, 1230, 2060, 1410] as R,
   chamber: [2072, 1240, 2240, 1400] as R,
   station: [2252, 1290, 2330, 1350] as R,
@@ -80,7 +84,7 @@ export function buildLantern(): LevelSpec {
   for (let x = 700; x < 2600; x += 160) p.rect(x, 500, 6, 1020, M.FRAME);
   for (const y of [700, 1120, 1460]) p.rect(620, y, 2000, 6, M.FRAME);
   p.seams(600, 500, 2040, 1020, M.HULL, 24, 16);
-  for (const r of [L.dock, L.spineA, L.hangar, L.shaft, L.spineB, L.hall, L.chamber, L.station, L.tube, L.drop, L.vault]) carve(r);
+  for (const r of [L.dock, L.spineA, L.hangar, L.shaft, L.spineB, L.gallery, L.hall, L.chamber, L.station, L.tube, L.drop, L.vault]) carve(r);
   carve([600, 930, 640, 1010]); // dock mouth
   // hiding alcoves in spine A's ceiling
   for (const x of [960, 1120, 1280]) carve([x, 990, x + 40, 1030]);
@@ -117,7 +121,7 @@ export function buildLantern(): LevelSpec {
   // back wall over every space (interior ambient) with some pipes for texture
   const back = new PixelGrid(WORLD_W, WORLD_H);
   const bp = new Painter(back);
-  for (const r of [L.dock, L.locker, L.spineA, L.hangar, L.shaft, L.spineB, L.hall, L.chamber, L.station, L.tube, L.drop, L.vault]) {
+  for (const r of [L.dock, L.locker, L.spineA, L.hangar, L.shaft, L.spineB, L.gallery, L.hall, L.chamber, L.station, L.tube, L.drop, L.vault]) {
     bp.rect(r[0], r[1], r[2] - r[0], r[3] - r[1], M.PLATE);
     bp.seams(r[0], r[1], r[2] - r[0], r[3] - r[1], M.PLATE, 32, 24, 40);
   }
@@ -140,6 +144,13 @@ export function buildLantern(): LevelSpec {
   add(crate(16, 16), 1250, 600);
   add(crate(14, 12), 1150, 860);
   add(scrap(13, 22), 1290, 820);
+  // gallery: cover that drifts (slowly, so it reads as junk until someone moves it)
+  add(crate(24, 18), 1600, 1290, { vx: 0.05, w: 0.02 });
+  add(crate(20, 20), 1650, 1380, { vy: -0.04, w: -0.03 });
+  add(scrap(16, 26), 1700, 1270, { w: 0.04 });
+  add(crate(22, 16), 1745, 1350, { vx: -0.04 });
+  add(scrap(17, 22), 1620, 1340, { w: -0.02 });
+  add(crate(18, 18), 1770, 1400, { w: 0.03 });
   // hall: a second patch, junk
   add(hullPatch(10, 34), 1990, 1300, { w: -0.03 });
   add(scrap(14, 18), 2000, 1380);
@@ -151,6 +162,9 @@ export function buildLantern(): LevelSpec {
   const entities: EntitySpec[] = [
     { type: 'securityBot', x: m(1340), y: m(970), patrol: [pt(1340, 970), pt(880, 970)], roomId: 1 },
     { type: 'securityBot', x: m(1460), y: m(1320), patrol: [pt(1460, 1320), pt(1900, 1320)], roomId: 4 },
+    { type: 'securityBot', x: m(1590), y: m(1260), patrol: [pt(1590, 1260), pt(1770, 1260), pt(1770, 1396), pt(1590, 1396)], roomId: 9 },
+    { type: 'turret', x: m(1680), y: m(1420), dir: -Math.PI / 2, roomId: 9 },
+    { type: 'turret', x: m(1640), y: m(1236), dir: Math.PI / 2, roomId: 9 },
     { type: 'drone', x: m(1080), y: m(700), angle: 0 },
     { type: 'drone', x: m(1170), y: m(780), angle: Math.PI },
     { type: 'drone', x: m(1250), y: m(680), angle: Math.PI / 2 },
@@ -168,6 +182,7 @@ export function buildLantern(): LevelSpec {
     room(6, 'chamber', L.chamber, 3),
     room(7, 'station', L.station, 4),
     room(8, 'vault', L.vault, 5),
+    room(9, 'gallery', L.gallery, 2),
   ];
 
   return {

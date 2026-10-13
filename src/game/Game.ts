@@ -19,6 +19,7 @@ import type { PixelBody } from '../pixel/PixelBody';
 import { PixelWorld } from '../pixel/PixelWorld';
 import type { PixelObject } from '../pixel/PixelObject';
 import { Welder } from '../pixel/Welder';
+import { dragArea, dragForce } from '../fields/drag';
 import { Scanner } from './Scanner';
 import { Devices } from './systems/Devices';
 import { PowerNet } from './systems/PowerNet';
@@ -504,18 +505,15 @@ export class Game {
   /** Gas flow drags bodies toward its velocity, scaled by density and exposed area. */
   private applyFieldForces(dt: number): void {
     const { field } = this.ctx;
-    const k = tune.gas.pushStrength;
     const push = (body: Body, area: number) => {
       const c = body.worldCom();
       field.sample(c.x, c.y, sample);
       if (sample.gas < 0.01) return;
       const v = body.linvel();
-      const g = Math.min(sample.gas, 3);
-      const fx = k * g * (sample.vx - v.x) * area;
-      const fy = k * g * (sample.vy - v.y) * area;
-      body.applyImpulse({ x: fx * dt, y: fy * dt }, true);
+      const f = dragForce(sample, v.x, v.y, area, v2);
+      body.applyImpulse({ x: f.x * dt, y: f.y * dt }, true);
     };
-    for (const b of this.pixels.bodies) push(b.body, Math.min(8, b.body.mass() / 60));
+    for (const b of this.pixels.bodies) push(b.body, dragArea(b.body.mass()));
     if (this.ship.alive) push(this.ship.body, 1.8);
   }
 

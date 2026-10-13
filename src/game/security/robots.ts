@@ -115,6 +115,8 @@ export abstract class Robot {
   armed = true;
   /** Why it was disabled (tests, HUD). */
   cause = '';
+  /** Where it started (tests). */
+  readonly spawn: P;
   private readonly organs0: Organs;
   private sysTick = 0;
 
@@ -124,6 +126,7 @@ export abstract class Robot {
   ) {
     this.cellsTotal = pb.grid.countSolid();
     this.heading = pb.body.rotation();
+    this.spawn = { ...pb.body.worldCom() };
     energize(pb.grid);
     pb.paint({ x0: 0, y0: 0, x1: pb.grid.w, y1: pb.grid.h });
     this.organs0 = this.organs();
@@ -160,17 +163,20 @@ export abstract class Robot {
 
   /**
    * Flies toward a desired velocity with bounded acceleration (thrusters, not teleporting).
-   * Velocities are relative to the air around the robot, like the ship's flight assist: in a
-   * decompression "holding still" means going with the wind, so venting a room takes its
-   * robots with it.
+   * Going somewhere (patrol, hunt) is world-relative: the thrusters fight any wind. Idle
+   * station-keeping (airRelative) holds still relative to the air instead, like the ship's
+   * flight assist: in a decompression that means going with the wind, so venting a room
+   * takes its idle robots with it.
    */
-  protected steer(vx: number, vy: number, accel: number, dt: number): void {
+  protected steer(vx: number, vy: number, accel: number, dt: number, airRelative = false): void {
     const b = this.pb.body;
-    const c = this.pos;
-    this.sec.ctx.field.sample(c.x, c.y, air);
-    const k = Math.min(1, air.gas / 0.5);
-    vx += air.vx * k;
-    vy += air.vy * k;
+    if (airRelative) {
+      const c = this.pos;
+      this.sec.ctx.field.sample(c.x, c.y, air);
+      const k = Math.min(1, air.gas / 0.5);
+      vx += air.vx * k;
+      vy += air.vy * k;
+    }
     const v = b.linvel();
     let ax = (vx - v.x) / dt;
     let ay = (vy - v.y) / dt;
@@ -181,6 +187,30 @@ export abstract class Robot {
     }
     const m = b.mass() * this.thrust;
     b.applyImpulse({ x: ax * m * dt, y: ay * m * dt }, true);
+  }
+
+  /**
+   * Steers a desired direction around loose bodies in the way (barrels, crates): looks a
+   * couple of meters ahead and sidesteps toward the side with room. Unit vectors in and out.
+   */
+  protected avoid(dx: number, dy: number, out: P): P {
+    out.x = dx;
+    out.y = dy;
+    const c = this.pos;
+    const px = this.sec.ctx.pixels;
+    const hit = px.raycast(c.x, c.y, dx, dy, 3.5, this.pb);
+    if (!hit || hit.target.kind !== 'pixelBody') return out;
+    // try both sides; prefer the one whose way is clear
+    for (const s of [1, -1]) {
+      const sx = dx * 0.5 - dy * s * 0.87;
+      const sy = dy * 0.5 + dx * s * 0.87;
+      if (!px.raycast(c.x, c.y, sx, sy, 3.5, this.pb)) {
+        out.x = sx;
+        out.y = sy;
+        return out;
+      }
+    }
+    return out;
   }
 
   /** Turns the body (eye side, local +x) toward `heading` with a rate controller. */
@@ -238,8 +268,19 @@ export abstract class Robot {
 
 const RAYS = 14;
 
+/** Unexplained acceleration (m/s², smoothed) that makes a bot come and look at a body. */
+const ODD = 1.5; // m/s²: carried or towed junk is well above (thrust ≈ 5); jostling junk isn't
+const INVESTIGATE_TIME = 7; // s circling a suspicious body
+const ORBIT = 5.5; // m from it
+
 export class SecurityBot extends Robot {
-  state: 'patrol' | 'hunt' | 'return' = 'patrol';
+  state: 'patrol' | 'hunt' | 'return' | 'investigate' = 'patrol';
+  /** The body it's circling, while investigating. */
+  looking: PixelBody | null = null;
+  private lookT = 0;
+  private orbitA = 0;
+  private orbitDir = 1;
+  private oddScanT = 0;
   suspicion = 0;
   private idx = 1;
   private t = Math.random() * 10;
@@ -288,6 +329,44 @@ export class SecurityBot extends Robot {
       if (sec.alert && Math.hypot(sec.lastKnown.x - me.x, sec.lastKnown.y - me.y) < 70) this.state = 'hunt';
     }
 
+    // curiosity: debris that moves by itself gets a closer look (from all sides)
+    if (this.state === 'patrol' || this.state === 'return') {
+      this.oddScanT -= dt;
+      if (this.sees && this.oddScanT <= 0) {
+        this.oddScanT = 0.25;
+        const odd = this.spotOdd(eye.x, eye.y, look);
+        if (odd) {
+          this.state = 'investigate';
+          this.looking = odd;
+          this.lookT = INVESTIGATE_TIME;
+          const c = odd.body.worldCom();
+          this.orbitA = Math.atan2(me.y - c.y, me.x - c.x);
+          this.orbitDir = Math.random() < 0.5 ? 1 : -1;
+        }
+      }
+    }
+    if (this.state === 'investigate') {
+      const b = this.looking;
+      this.lookT -= dt;
+      if (!b || !b.alive || this.lookT <= 0 || !this.sees) {
+        this.looking = null;
+        this.state = 'return';
+      } else {
+        // keep moving round it, eye on it: whatever hides behind it gets seen
+        if (sec.oddness(b) > ODD) this.lookT = Math.max(this.lookT, 3);
+        const c = b.body.worldCom();
+        this.orbitA += this.orbitDir * 0.55 * dt;
+        const tx = c.x + Math.cos(this.orbitA) * ORBIT;
+        const ty = c.y + Math.sin(this.orbitA) * ORBIT;
+        const dx = tx - me.x;
+        const dy = ty - me.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const sp = Math.min(3.5, d * 1.2);
+        this.steer((dx / d) * sp, (dy / d) * sp, 5, dt);
+        if (!seeing && !lit) this.heading = Math.atan2(c.y - me.y, c.x - me.x);
+      }
+    }
+
     if (this.state === 'hunt') {
       if (seeing) sec.spotted({ x: ship.x, y: ship.y });
       if (!sec.alert) this.state = 'return';
@@ -303,7 +382,7 @@ export class SecurityBot extends Robot {
           sec.ctx.particles.glint(me.x + (ship.x - me.x) * k, me.y + (ship.y - me.y) * k, 0, 0, 0.6, 0.8, 1, 0.08, 0.14);
         }
       }
-    } else {
+    } else if (this.state !== 'investigate') {
       // patrol (or return to it)
       const p = this.patrol[this.idx % this.patrol.length];
       const dx = p.x - me.x;
@@ -314,16 +393,36 @@ export class SecurityBot extends Robot {
         if (this.state === 'return') this.state = 'patrol';
       }
       const sp = this.state === 'return' ? 4 : 2.6;
-      const dir = this.state === 'return' && d > 12 ? sec.nav.direction(me.x, me.y, tmp) : null;
-      if (dir) this.steer(dir.x * sp, dir.y * sp, 4, dt);
-      else this.steer((dx / (d || 1)) * sp, (dy / (d || 1)) * sp, 4, dt);
+      const nav = this.state === 'return' && d > 12 ? sec.nav.direction(me.x, me.y, tmp) : null;
+      const dir = this.avoid(nav ? nav.x : dx / (d || 1), nav ? nav.y : dy / (d || 1), tmp);
+      this.steer(dir.x * sp, dir.y * sp, 4, dt);
       if (!seeing && !lit) this.heading = Math.atan2(dy, dx) + Math.sin(this.t * 1.3) * 0.55; // sweep while walking
     }
     this.face(dt);
   }
 
+  /** A body in view that is moving oddly (being carried, towed, pushed), if any. */
+  private spotOdd(ex: number, ey: number, look: number): PixelBody | null {
+    const sec = this.sec;
+    for (const b of sec.ctx.pixels.bodies) {
+      if (b === this.pb || b.body.mass() < 20 || sec.oddness(b) < ODD) continue;
+      const c = b.body.worldCom();
+      const dx = c.x - ex;
+      const dy = c.y - ey;
+      const d = Math.hypot(dx, dy);
+      if (d > SecurityBot.RANGE || d < 0.5) continue;
+      const a = Math.atan2(dy, dx);
+      if (Math.abs(Math.atan2(Math.sin(a - look), Math.cos(a - look))) > SecurityBot.HALF) continue;
+      const hit = sec.ctx.pixels.raycast(ex, ey, dx / d, dy / d, d, this.pb);
+      if (hit && hit.target !== b) continue; // something else is in the way
+      return b;
+    }
+    return null;
+  }
+
   frameUpdate(): void {
-    if (!this.alive || !this.sees) {
+    // the body can be destroyed between physics steps (smashed, culled): don't touch it then
+    if (!this.alive || !this.sees || !this.pb.alive) {
       this.cone.hide();
       return;
     }
@@ -334,13 +433,14 @@ export class SecurityBot extends Robot {
       this.lengths[i] = this.sec.rayLength(eye.x, eye.y, a, SecurityBot.RANGE, this.pb);
     }
     const hunting = this.state === 'hunt';
-    const color = hunting ? 0xff3b30 : this.suspicion > 0.05 ? 0xff9a3a : 0xffd27a;
+    // red hunting, orange suspicious, pale gold curious (circling something), warm white idle
+    const color = hunting ? 0xff3b30 : this.suspicion > 0.05 ? 0xff9a3a : this.state === 'investigate' ? 0xffe066 : 0xffd27a;
     const opacity = hunting ? 0.12 : 0.1 + this.suspicion * 0.1;
     this.cone.set(eye.x, eye.y, look, SecurityBot.HALF, this.lengths, color, opacity);
   }
 
   addLights(out: Light[]): void {
-    if (!this.alive || !this.sees) return;
+    if (!this.alive || !this.sees || !this.pb.alive) return;
     const eye = this.eye({ x: 0, y: 0 });
     const look = this.lookAngle();
     const hunting = this.state === 'hunt';
@@ -370,7 +470,7 @@ export class Drone extends Robot {
     const los = this.sees && ship.alive && d < 30 && sec.canSee(me.x, me.y, Math.atan2(dy, dx), Math.PI, 30, this.pb);
     if (los) sec.spotted({ x: ship.x, y: ship.y });
     if (!sec.alert) {
-      this.steer(0, 0, 4, dt); // idle hover
+      this.steer(0, 0, 4, dt, true); // idle hover, holding still relative to the air
       this.face(dt);
       return;
     }
@@ -406,7 +506,7 @@ export class Drone extends Robot {
   }
 
   addLights(out: Light[]): void {
-    if (!this.alive) return;
+    if (!this.alive || !this.pb.alive) return;
     const c = this.pos;
     out.push({ x: c.x, y: c.y, dirX: 1, dirY: 0, cosHalf: -2, range: 6, intensity: 0.7, r: 1, g: 0.2, b: 0.35, skin: 0.8 });
   }
