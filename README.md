@@ -20,6 +20,7 @@ npm run smoke -- <outDir> "autotest=all"   # headless Chrome run with scripted s
   - A pressurized hangar of drones that you can vent by cutting its door free.
   - A power-and-pressure puzzle: patch a breach, plug in a battery or a stolen drone core, and the pressure door opens.
   - A pneumatic tube that carries you down to the vault.
+  - A pressurized crew section behind an airlock off the shaft, with life support and a store hatch holding a second battery.
 - `?level=dungeon`: the generated derelict, about 512 × 256 m with 30–36 rooms. `?seed=N` pins the generator.
 - `?level=classic`: the original small derelict. Autotests use it by default.
 - `?level=lab`: a small station that teaches the systems loop. Weld a patch over the chamber's roof breach. Push the battery into the wall socket to power the lights and the air pump. Once the chamber holds air, its pressure door opens to the vault and the core.
@@ -37,9 +38,10 @@ The top-left minimap reveals the ship as you explore. It always shows you (white
 | Mouse | Aim: the ship always turns to face the cursor |
 | Space | Thrust forward |
 | F | Headlamp on/off (you need it to see; sensors can see it too) |
-| V | Knock on whatever you're touching or standing on. A vibration pulse spreads through the matter and briefly shows what's inside it: power cores, conduits, sockets, pumps, tough material, and hidden cavities. Walking on a hull sends small pulses too |
+| V | Knock on whatever you're touching or standing on. A vibration pulse spreads through the matter and draws a black and white schematic of what's inside it: power cores, live (solid) and dead (dashed) lines, sockets, pumps, tough material (hatched), and hidden cavities. Walking on a hull sends small pulses too |
+| G | Use a door or airlock panel within reach (it needs power). An airlock cycles: it shuts the open door, vents or pumps the chamber to match the far side, then opens the far door |
 | Left mouse (hold) | Cutter laser. It heats what it hits; a material gives way past its burn point (armor and girders only at white heat, and they work the laser harder). Hot metal pressed together welds: push a plate into a breach and heat the seam. Pushes loose things; overheating locks it until cool |
-| Right mouse | Fire harpoon; click again to let go; hold to winch in (clamps on contact) |
+| Right mouse | Fire harpoon; click again to let go; hold to winch in (clamps on contact). A harpoon that bites next to a robot's red core hooks the core: winch and it tears out, still live, for a wall socket |
 | (drift slowly into debris) | The four arms catch it: carry it as a shield or ram |
 | E | Let go of what the arms hold (it keeps its momentum). Otherwise clamp onto the hull (or let go); then **A / D** walk along it on the arms and **Space** pushes off. The camera rolls so the hull is down. |
 | Q | Pay out tether slack (hold RMB to winch in) |

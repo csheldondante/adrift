@@ -31,6 +31,7 @@ export const M = {
   SOCKET: 19, // wall power socket: live while a powered body's conductor touches it
   PDOOR: 20, // pressure door slab: the toughest cuttable material; opens on pressure
   PUMP: 21, // air pump housing: pressurizes its room while powered
+  PANEL: 22, // door / airlock control panel: works (G) while powered
 } as const;
 export type MaterialId = (typeof M)[keyof typeof M];
 
@@ -80,6 +81,7 @@ const DEFS: MaterialDef[] = [
   { id: M.SOCKET, name: 'socket', color: [70, 160, 255], variation: 0.06, hp: 120, armor: 1, density: 80, flags: F.SOLID | F.EMISSIVE | F.CONDUCTS, burn: 0.8, heatCap: 1.5, spark: 1.5, load: 1.5 },
   { id: M.PDOOR, name: 'pressure door', color: [104, 112, 128], variation: 0.04, hp: 650, armor: 1, density: 140, flags: F.SOLID, burn: 1.1, heatCap: 3, cool: 0.14, spark: 3, load: 3 },
   { id: M.PUMP, name: 'pump', color: [80, 200, 120], variation: 0.08, hp: 60, armor: 1, density: 80, flags: F.SOLID | F.EMISSIVE | F.CONDUCTS, burn: 0.5, spark: 1 },
+  { id: M.PANEL, name: 'door panel', color: [120, 230, 200], variation: 0.05, hp: 60, armor: 1, density: 70, flags: F.SOLID | F.EMISSIVE | F.CONDUCTS, burn: 0.5, spark: 1.2 },
   { id: M.ARMOR, name: 'armor', color: [52, 56, 66], variation: 0.05, hp: 320, armor: 1, density: 110, flags: F.SOLID, burn: 0.95, heatCap: 2.5, cool: 0.16, spark: 3, load: 2.5 },
 ];
 

@@ -15,8 +15,18 @@ export function hintFor(game: Game): string {
   if (!sh.alive) return '';
   const x = sh.x;
   const y = sh.y;
+  if (game.time < game.noticeUntil) return game.notice;
   const g = game.grapple;
   if (g.coreHooked) return 'Harpoon is in a power core: <b>hold RMB</b> to winch and tear it out';
+
+  const panel = game.devices.panelNear(x, y);
+  if (panel) {
+    if (!panel.powered) return 'Door panel, dead: no power on its line';
+    if (panel.door) return `<b>G</b>: ${panel.door.open ? 'close' : 'open'} the hatch`;
+    const l = panel.lock!;
+    if (l.state === 'toIn' || l.state === 'toOut') return `Airlock cycling: ${l.state === 'toOut' ? 'venting' : 'pressurizing'}…`;
+    return `Airlock (${l.state === 'in' ? 'open to the inside' : 'open to the outside'}): <b>G</b> to cycle it`;
+  }
 
   const robots = game.security.robots;
   const isRobot = (b: PixelBody) => robots.some((r) => r.pb === b && r.alive);

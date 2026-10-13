@@ -767,6 +767,60 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       await sleep(400);
       log('lab-unplug', { live: g.power.live, light: g.power.powered(LAB.light.x, LAB.light.y), pumping: g.devices.pumping });
     }
+    if (md === 'airlock') {
+      // Lantern's crew airlock: cycle out to the shaft and back in, keeping the crew section
+      // pressurized throughout; then the store hatch (?level=lantern)
+      const g = game();
+      const s = { gas: 0, heat: 0, vx: 0, vy: 0 };
+      const gasAt = (cx: number, cy: number) => (g.ctx.field.sample(m(cx), m(cy), s), +s.gas.toFixed(2));
+      const lock = g.devices.airlocks[0];
+      const press = async () => {
+        input.simulateDown('KeyG');
+        await sleep(40);
+        input.simulateUp('KeyG');
+      };
+      const snap = () => ({ state: lock.state, inner: +lock.inner.t.toFixed(2), outer: +lock.outer.t.toFixed(2), valve: +lock.valve.t.toFixed(2), chamber: gasAt(1450, 1120), crew: gasAt(1600, 1120), shaft: gasAt(1400, 1120) });
+      const waitState = async (st: string, ms: number) => {
+        const t0 = performance.now();
+        const trace: unknown[] = [];
+        let next = 0;
+        while (performance.now() - t0 < ms && lock.state !== st) {
+          const t = performance.now() - t0;
+          if (t > next) {
+            next += 1000;
+            trace.push(snap());
+          }
+          place(g.ship.x, g.ship.y, 0);
+          await sleep(30);
+        }
+        return { ms: Math.round(performance.now() - t0), trace };
+      };
+      place(m(1405), m(1150), 0);
+      await sleep(1500);
+      const start = { ...snap(), panel: g.devices.panelNear(g.ship.x, g.ship.y)?.powered ?? null, hint: hintFor(g) };
+      await press();
+      const out = await waitState('out', 15000);
+      await sleep(1600);
+      log('airlock-out', { start, ...out, end: snap() });
+      place(m(1450), m(1120), 0);
+      await sleep(300);
+      await press();
+      const back = await waitState('in', 15000);
+      await sleep(1600);
+      log('airlock-in', { ...back, end: snap() });
+      g.zoom = 40;
+      g.debugCamera = { x: m(1550), y: m(1120) };
+      await sleep(300);
+      await shot('airlock');
+      g.debugCamera = null;
+      place(m(1610), m(1075), 0);
+      await sleep(200);
+      const hatch = g.devices.doors.find((d) => d.spec.type === 'hatch')!;
+      const h0 = hatch.t;
+      await press();
+      await sleep(1800);
+      log('hatch', { before: h0, after: +hatch.t.toFixed(2), uses: g.devices.uses, storeGas: gasAt(1640, 1036) });
+    }
     if (md === 'rip') {
       // harpoon a drone from behind next to its core, hold to winch: the core tears out on the
       // line, still live, and the drone goes dead

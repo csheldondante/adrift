@@ -97,6 +97,9 @@ export class Game {
   private readonly worldH: number;
   private acc = 0;
   time = 0;
+  /** A short notice from the last action (a panel used), shown until noticeUntil (game time). */
+  notice = '';
+  noticeUntil = 0;
   zoom = 34;
   /** Debug/test: if set, the camera looks here instead of following the ship. */
   debugCamera: { x: number; y: number } | null = null;
@@ -243,6 +246,13 @@ export class Game {
     if (input.released('Mouse2')) this.slots[1].release();
     this.knockT -= dt;
     if (input.hit('KeyV')) this.knock();
+    if (input.hit('KeyG')) {
+      const msg = this.devices.use(sh.x, sh.y);
+      if (msg) {
+        this.notice = msg;
+        this.noticeUntil = this.time + 2.5;
+      }
+    }
     if (input.hit('KeyF')) {
       sh.lampOn = !sh.lampOn;
       this.sound.emit('lamp', sh.x, sh.y, 1);

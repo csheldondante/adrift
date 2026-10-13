@@ -34,7 +34,31 @@ export type DeviceSpec =
   /** Opens while the gas at `sensor` (meters) is at least `open`; closes below `close`. */
   | { type: 'pressureDoor'; x0: number; y0: number; x1: number; y1: number; sensor: P; open: number; close: number }
   /** Pours air in at `outlet` (meters) while its pump cell is powered, up to `target` gas. */
-  | { type: 'pump'; cell: P; outlet: P; rate: number; target: number };
+  | { type: 'pump'; cell: P; outlet: P; rate: number; target: number }
+  /** A door you open and shut yourself (G at its panel cell), while the panel is powered. */
+  | { type: 'hatch'; x0: number; y0: number; x1: number; y1: number; panel: P; open?: boolean }
+  /**
+   * Two interlocked doors around a chamber. Using any of its panels cycles it to the other
+   * side: shut the open door, vent the chamber through its valve (going out) or pump it up
+   * (going in) until it matches the far side, then open the far door. Starts open inside.
+   */
+  | {
+      type: 'airlock';
+      inner: Rect4;
+      outer: Rect4;
+      /** A small slot from the chamber to the outside, opened to vent it. */
+      valve: Rect4;
+      panels: P[];
+      /** Sample points (meters): the chamber, and beyond each door. */
+      chamber: P;
+      inside: P;
+      outside: P;
+      /** Gas per second poured in while pressurizing. */
+      rate: number;
+    };
+
+/** x0, y0, x1, y1 in cells. */
+export type Rect4 = [number, number, number, number];
 
 /** Things systems spawn at load (meters). Consumed by machinery/security systems as they land. */
 export type EntitySpec =

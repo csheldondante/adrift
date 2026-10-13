@@ -11,6 +11,12 @@
 //                                   idle drones and cargo. Its floor is a plate hangar door:
 //                                   cut it (or the window) and everything inside goes out.
 //   Shaft    x1380-1420 y990-1340   45 m straight up, hard corners at both ends.
+//   Airlock  x1426-1474 y1096-1156  off the shaft's right wall: outer and inner doors, a vent
+//                                   valve to the shaft, panels outside, inside and in the crew
+//                                   room (G). Powered from the start by the crew section's core.
+//   Crew     x1480-1700 y1060-1200  PRESSURIZED: lamps, a life-support pump that refills it
+//                                   whenever it's sealed, and a hatch in its floor down to:
+//   Store    x1612-1672 y1020-1054  a second battery.
 //   Spine B  x1380-1940 y1300-1340  70 m, a second patrol bot. Midway it opens into:
 //   Gallery  x1560-1800 y1236-1420  a scanner room: sweeping sentries, a bot circling it, and
 //                                   drifting junk to hide behind. Bots come and look at junk
@@ -58,6 +64,19 @@ export const LANTERN = {
   pump: { x: 2107, y: 1243 },
   tubePump: { x: 2277, y: 1293 },
   pdoor: [2240, 1296, 2252, 1336] as R,
+  airlock: [1426, 1096, 1474, 1156] as R,
+  crew: [1480, 1060, 1700, 1200] as R,
+  store: [1612, 1020, 1672, 1054] as R,
+  lockOuter: [1420, 1100, 1426, 1140] as R,
+  lockInner: [1474, 1100, 1480, 1140] as R,
+  lockValve: [1420, 1146, 1426, 1154] as R,
+  lockPanels: [
+    { x: 1421, y: 1160 }, // shaft side
+    { x: 1450, y: 1095 }, // in the chamber floor
+    { x: 1479, y: 1160 }, // crew side
+  ],
+  storeHatch: [1620, 1054, 1664, 1060] as R,
+  hatchPanel: { x: 1604, y: 1059 },
 };
 
 export function buildLantern(): LevelSpec {
@@ -84,7 +103,9 @@ export function buildLantern(): LevelSpec {
   for (let x = 700; x < 2600; x += 160) p.rect(x, 500, 6, 1020, M.FRAME);
   for (const y of [700, 1120, 1460]) p.rect(620, y, 2000, 6, M.FRAME);
   p.seams(600, 500, 2040, 1020, M.HULL, 24, 16);
-  for (const r of [L.dock, L.spineA, L.hangar, L.shaft, L.spineB, L.gallery, L.hall, L.chamber, L.station, L.tube, L.drop, L.vault]) carve(r);
+  for (const r of [L.dock, L.spineA, L.hangar, L.shaft, L.spineB, L.gallery, L.hall, L.chamber, L.station, L.tube, L.drop, L.vault, L.airlock, L.crew, L.store]) carve(r);
+  // the airlock's door slots and valve (Devices paints the slabs)
+  for (const r of [L.lockOuter, L.lockInner, L.lockValve, L.storeHatch]) carve(r);
   carve([600, 930, 640, 1010]); // dock mouth
   // hiding alcoves in spine A's ceiling
   for (const x of [960, 1120, 1280]) carve([x, 990, x + 40, 1030]);
@@ -111,17 +132,40 @@ export function buildLantern(): LevelSpec {
   p.rect(2246, 1233, 2, 28, M.CONDUIT).rect(2240, 1258, 6, 2, M.CONDUIT).rect(2234, 1252, 6, 14, M.LIGHT); // chamber lamp
   p.rect(2276, 1234, 2, 56, M.CONDUIT).rect(2270, 1290, 14, 6, M.PUMP); // tube pump
 
+  // the crew section runs on its own core in its right wall: a bus above the ceiling to the
+  // airlock panels, lamps and life support; a second bus below to the store hatch panel
+  p.rect(1704, 1120, 12, 16, M.POWER);
+  p.rect(1710, 1136, 2, 70, M.CONDUIT).rect(1421, 1204, 291, 2, M.CONDUIT);
+  p.rect(1421, 1162, 2, 42, M.CONDUIT).rect(1479, 1162, 2, 42, M.CONDUIT);
+  for (const x of [1530, 1650]) p.rect(x, 1200, 12, 3, M.LIGHT).rect(x + 5, 1203, 2, 1, M.CONDUIT);
+  p.rect(1590, 1200, 14, 4, M.PUMP);
+  p.rect(1710, 1010, 2, 110, M.CONDUIT).rect(1450, 1010, 262, 2, M.CONDUIT).rect(1604, 1012, 2, 45, M.CONDUIT).rect(1450, 1012, 2, 81, M.CONDUIT);
+
   const devices: DeviceSpec[] = [
     { type: 'pump', cell: L.pump, outlet: { x: m(2120), y: m(1300) }, rate: 10, target: 1.1 },
     { type: 'pressureDoor', x0: L.pdoor[0], y0: L.pdoor[1], x1: L.pdoor[2], y1: L.pdoor[3], sensor: { x: m(2200), y: m(1320) }, open: 0.6, close: 0.3 },
     // the tube pump never reaches its target: the vault vents to space, so air keeps flowing
     { type: 'pump', cell: L.tubePump, outlet: { x: m(2300), y: m(1320) }, rate: 14, target: 3 },
+    // crew section: life support, the airlock, the store hatch
+    { type: 'pump', cell: { x: 1596, y: 1201 }, outlet: { x: m(1597), y: m(1190) }, rate: 6, target: 1 },
+    {
+      type: 'airlock',
+      inner: L.lockInner,
+      outer: L.lockOuter,
+      valve: L.lockValve,
+      panels: L.lockPanels,
+      chamber: { x: m(1450), y: m(1120) },
+      inside: { x: m(1530), y: m(1120) },
+      outside: { x: m(1400), y: m(1120) },
+      rate: 8,
+    },
+    { type: 'hatch', x0: L.storeHatch[0], y0: L.storeHatch[1], x1: L.storeHatch[2], y1: L.storeHatch[3], panel: L.hatchPanel },
   ];
 
   // back wall over every space (interior ambient) with some pipes for texture
   const back = new PixelGrid(WORLD_W, WORLD_H);
   const bp = new Painter(back);
-  for (const r of [L.dock, L.locker, L.spineA, L.hangar, L.shaft, L.spineB, L.gallery, L.hall, L.chamber, L.station, L.tube, L.drop, L.vault]) {
+  for (const r of [L.dock, L.locker, L.spineA, L.hangar, L.shaft, L.spineB, L.gallery, L.hall, L.chamber, L.station, L.tube, L.drop, L.vault, L.airlock, L.crew, L.store]) {
     bp.rect(r[0], r[1], r[2] - r[0], r[3] - r[1], M.PLATE);
     bp.seams(r[0], r[1], r[2] - r[0], r[3] - r[1], M.PLATE, 32, 24, 40);
   }
@@ -151,6 +195,9 @@ export function buildLantern(): LevelSpec {
   add(crate(22, 16), 1745, 1350, { vx: -0.04 });
   add(scrap(17, 22), 1620, 1340, { w: -0.02 });
   add(crate(18, 18), 1770, 1400, { w: 0.03 });
+  // crew store: a second battery
+  add(powerCell(), 1642, 1036);
+  add(crate(14, 12), 1520, 1080, { w: 0.02 });
   // hall: a second patch, junk
   add(hullPatch(10, 34), 1990, 1300, { w: -0.03 });
   add(scrap(14, 18), 2000, 1380);
@@ -183,6 +230,7 @@ export function buildLantern(): LevelSpec {
     room(7, 'station', L.station, 4),
     room(8, 'vault', L.vault, 5),
     room(9, 'gallery', L.gallery, 2),
+    room(10, 'crew', L.crew, 2),
   ];
 
   return {
@@ -198,7 +246,7 @@ export function buildLantern(): LevelSpec {
     salvageIndex,
     shipSpawn: { x: m(470), y: m(970), angle: 0 },
     extraction: { x0: m(2720), y0: m(640), x1: m(2840), y1: m(800) },
-    pressurized: [{ x0: m(L.hangar[0]), y0: m(L.hangar[1]), x1: m(L.hangar[2]), y1: m(L.hangar[3]), gas: 1.0 }],
+    pressurized: [L.hangar, L.airlock, L.crew, L.store, L.lockInner].map((r) => ({ x0: m(r[0]), y0: m(r[1]), x1: m(r[2]), y1: m(r[3]), gas: 1.0 })),
     center: { x: m(1620), y: m(1010) },
   };
 }

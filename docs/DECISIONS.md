@@ -2,6 +2,35 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-13 — Hatches, airlocks and life support
+
+Playtest ask: "there also need to be airlocks, doors that I can open and close and double sets to keep pressure in (or systems to recreate pressure once a seal has been established)".
+
+**Decision:** two new device types in `Devices`, and a new material `PANEL`, which glows, conducts and is cuttable.
+- **Hatch:** a door you open and shut with **G** at its panel, while the panel is powered.
+- **Airlock:** an inner and an outer door with a chamber between, plus a small vent valve to the outside. Using any of its panels cycles it:
+  1. Shut whichever door is open. The doors are interlocked, so both are never open at once.
+  2. Going out: open the valve until the chamber matches the outside. Going in: pump the chamber up until it matches the inside.
+  3. Open the far door.
+  - A 9 s cap stops a leak from trapping you.
+- **Everything is physical.** Doors paint the terrain, and venting is a real slot opened to the outside, so the gas field supplies the wind, the sound and the push.
+- **No power, no movement.** Doors stop where they are. The panels say they're dead, and the matter can still be cut, which is the soft constraint.
+- **Re-pressurizing:** the existing powered `pump` already refills a room up to its target once it's sealed. The crew section has one as life support, so a welded breach heals itself.
+- **Lantern:** a pressurized crew section off the shaft's right wall, behind an airlock. It has:
+  - three panels: shaft side, chamber floor, crew side;
+  - its own core in the wall, powering the panels, lamps and life support from the start, so the airlock teaches itself;
+  - a floor hatch down to a store holding a second battery, an alternative power source for the hall socket.
+  - Cutting in instead of cycling vents it the hard way.
+- **Hints** name the panel's state and say what G will do.
+
+**Measured:**
+- Cycle out: 3.8 s; the chamber goes from 1.04 to 0.07.
+- Cycle in: 2.8 s; the chamber goes back to 1.04.
+- The crew section holds 1.04 throughout.
+- The hatch opens in 1.4 s.
+
+**Revisit if:** players want doors without power, for example a manual crank that is slow and noisy, or sensors that hear the airlock cycle.
+
 ## 2026-10-13 — Schematic scan, tearing cores out with the harpoon, contextual hints
 
 Playtest notes (2026-10-13):
