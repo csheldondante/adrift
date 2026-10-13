@@ -1,7 +1,10 @@
-// Cutting beam: a hitscan ray to the first solid pixel; damages a disc at the impact point
-// each physics step, heats the gas/heat field there, pushes loose bodies (radiation pressure,
-// tuned for fun), and throws sparks. A heat meter limits use: firing heats it, idling cools
-// it, and filling it overheats the laser until it has cooled all the way down.
+// Cutting beam: a hitscan ray to the first solid pixel. Each physics step it pours heat into
+// the matter there; cells hotter than their material's burn point give way (soft metal almost
+// at once, armor and girders only at white heat). It also heats the gas/heat field, pushes
+// loose bodies (radiation pressure, tuned for fun) and throws sparks by material. A heat meter
+// limits use: firing heats it (faster on tough material), idling cools it, and filling it
+// overheats the laser until it has cooled all the way down. Nothing is uncuttable; tough
+// things just cost more laser.
 //
 // Likely growth: weapons share this shape (ray -> impact -> effects). If several appear,
 // extract the "ray + impact effect" into a reusable beam component.
@@ -9,6 +12,7 @@
 import { tune } from '../config';
 import { ORDER } from '../render/order';
 import { Ribbon } from '../render/Ribbon';
+import { MAT_LOAD, MAT_NAME, MAT_SPARK } from '../pixel/materials';
 import type { PixelBody } from '../pixel/PixelBody';
 import type { GameContext, Tool } from './types';
 
@@ -37,6 +41,8 @@ export class Cutter implements Tool {
   private ey = 0;
   private hitting = false;
   private t = 0;
+  /** Material under the beam (0 when not on matter). */
+  material = 0;
   /** Laser heat 0..1 (HUD meter). */
   heat = 0;
   /** Locked out after overheating, until heat returns to 0. */
@@ -54,11 +60,12 @@ export class Cutter implements Tool {
     const c = tune.cutter;
     this.active = held && ctx.ship.alive && !this.overheated;
     if (!this.active) {
+      this.material = 0;
       this.heat = Math.max(0, this.heat - (this.overheated ? c.overheatCoolPerSecond : c.coolPerSecond) * dt);
       if (this.overheated && this.heat <= 0) this.overheated = false;
       return;
     }
-    this.heat = Math.min(1, this.heat + c.heatPerSecond * dt);
+    this.heat = Math.min(1, this.heat + c.heatPerSecond * (this.material ? MAT_LOAD[this.material] : 1) * dt);
     if (this.heat >= 1) {
       this.overheated = true;
       ctx.ship.nose(nose);
@@ -75,6 +82,7 @@ export class Cutter implements Tool {
     this.sx = nose.x;
     this.sy = nose.y;
     this.hitting = !!hit;
+    this.material = hit ? ctx.pixels.matAt(hit.target, hit.x + dx * 0.06, hit.y + dy * 0.06) : 0;
     if (!hit) {
       this.ex = nose.x + dx * c.range;
       this.ey = nose.y + dy * c.range;
@@ -84,13 +92,15 @@ export class Cutter implements Tool {
     this.ey = hit.y;
     const cx = hit.x + dx * c.radius * 0.5;
     const cy = hit.y + dy * c.radius * 0.5;
-    ctx.pixels.damageCircle(cx, cy, c.radius, c.damagePerSecond * dt);
+    // heat first: the struck surface glows, and whatever is past its burn point gives
+    ctx.pixels.heatCircle(cx, cy, c.radius * 1.5, c.glowRate * dt);
+    ctx.pixels.damageCircle(cx, cy, c.radius, c.damagePerSecond * dt, true);
     // shove what we're hitting (machines are kinematic and ignore it)
     if (hit.target.kind === 'pixelBody') (hit.target as PixelBody).body.applyImpulseAtPoint({ x: dx * c.push * dt, y: dy * c.push * dt }, { x: hit.x, y: hit.y }, true);
     ctx.field.inject(cx, cy, c.radius, 0, c.heat * dt);
-    // the struck surface glows (uncuttable material too: it heats but never gives)
-    ctx.pixels.heatCircle(cx, cy, c.radius * 1.5, c.glowRate * dt);
-    for (let k = 0; k < 2; k++) {
+    // sparks by material: glass melts quietly, armor and girders shower
+    const sparks = MAT_SPARK[this.material] * 1.6;
+    for (let k = 0; k < Math.floor(sparks + Math.random()); k++) {
       const sp = 3 + Math.random() * 7;
       const side = (Math.random() - 0.5) * 9;
       ctx.particles.spark(hit.x, hit.y, -dx * sp - dy * side, -dy * sp + dx * side, 0.25 + Math.random() * 0.3);
@@ -111,7 +121,8 @@ export class Cutter implements Tool {
 
   status(): string {
     if (this.overheated) return 'OVERHEATED';
-    return this.active ? (this.hitting ? 'cutting' : 'firing') : 'ready';
+    // the beam tells you what you're on: in the dark that's how you learn what's tough
+    return this.active ? (this.hitting ? `on ${MAT_NAME[this.material] ?? 'matter'}` : 'firing') : 'ready';
   }
 
   dispose(): void {

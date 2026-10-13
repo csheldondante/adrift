@@ -2,6 +2,48 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-12 — Heat is physical: burn points, conduction, welding (milestone A)
+
+Playtest: the cutter is the best toy, but it was an eraser. Uncuttable material was annoying, especially in the dark where you can't tell what's what. The user asked for things to glow longer, for some materials to spark, for tough material that has to glow before it burns, and for welding by pressing hot pieces together.
+
+**Decision:** the per-cell `heat` that used to be cosmetic now drives the cutter.
+- **Burn points.** The beam pours heat in (`amount / heatCap`). A cell only takes beam damage once it's past its material's burn point, with damage ramping in over 0.12 heat.
+  - Soft metal gives almost at once.
+  - Armor, girders and machine steel give only at white heat. They also multiply the laser's heat-meter gain (`load`), so a sustained cut through them costs an overheat.
+  - Explosions and impacts are not heat-gated.
+- **No uncuttable structure.** Frame, piston and stripe are now just very tough. The salvage core is the only exception, because it's the prize.
+- **New `ARMOR` material,** for drones and pressure doors later.
+- **Conduction.** Heat spreads to neighboring cells (`tune.heat.conduction`), so the metal around a cut glows. Cooling is per material and much slower than before, about 0.3/s against 1.1/s, so cuts stay lit longer. The glow already feeds the lightmap.
+- **Sparks** depend on the material under the beam: glass melts quietly, armor showers sparks. The HUD shows `on <material>`, so the beam itself tells you what you're touching.
+- **Welding (`Welder`).**
+  - Every 4 steps, hot edge cells (at `weldHeat` or above) probe one cell past their open side. Where that lands in another piece, the two are touching.
+  - Two pieces weld when there are at least 4 touching pairs and they move less than 1.5 m/s relative to each other at the joint.
+  - A body welded to terrain is rasterized into the terrain grid. It becomes structure: static, gas-tight and walkable. The terrain then gets the same connectivity re-check a cut gets, so a piece that only touches at a corner falls straight off again.
+  - Two bodies welded together merge into one body in the heavier body's frame, with momentum conserved.
+  - Either side being hot is enough, so you can heat the rim of a breach and push a cold plate into it.
+  - Machines, the salvage and live robots never weld.
+
+**Why rasterize instead of using joints:** welded matter should *be* the hull. Patching a breach has to seal the gas (the wall mask comes from the terrain grid), take cuts and be walkable. A joint would be a second representation that could disagree with the pixels. The cost is nearest-cell resampling of a rotated piece, about one cell of error at the seam.
+
+**Grace period:** a piece that was just cut free can't weld for 1.5 s. Its edge is white-hot and only one cell from the kerf, so it would otherwise fuse straight back on.
+
+**Tuning:**
+- Beam: `glowRate` 6 (from 3), `damagePerSecond` 650 (from 420), so the first hull cell still goes in about a third of a second.
+- Measured with a 2 m block: hull loses its first cell at about 0.33 s with laser heat 0.27; armor at about 0.69 s with laser heat 0.58.
+- A girder under 1.5 s of beam loses 7 of 207 cells and still glows at 0.4 heat 2.5 s later.
+
+**Revisit if:**
+- Welds happen by accident in play, for example debris resting on hull you're cutting near. If so, require a pressing force from contact events rather than just proximity.
+- Merging bodies' spin feels wrong. Spin is mass-weighted, not a true angular-momentum merge.
+
+## 2026-10-12 — Conduction is for vacuum
+
+Playtest note: hearing through the hull should only happen in vacuum. Pressurized rooms should sound normal, and decompression should rush.
+
+**Decision:** scale conducted sound by `1 − air at the listener`. In atmosphere the air path takes over, so you hear normal sound, plus wind from gas moving past the ship.
+
+**Why:** a single scale factor keeps the model physical. Air drowns out the hull's ring, so there is no separate mode switch that could get out of sync with the gas field.
+
 ## 2026-10-12 — Four arms, and sound by conduction (branch `explore/dark-derelict`)
 
 User request: four articulated arms that grab things you approach slowly and closely (so close debris doesn't need the tether), that walk on the hull with the body swung to face out; and sound for the probe's own systems, air rushing past, clunks against the hull and harpoon hits, conducted through the hull, with airborne sound only in atmosphere.
@@ -293,11 +335,3 @@ The field is a staggered, compressible-ish grid: pressure equals density, face v
 
 ### Testing approach
 `npm run smoke` launches system Chrome headless with WebGPU through playwright-core, so no browser download is needed. It runs the scripted scenarios in `src/dev/autotest.ts` and logs measurable outcomes. These scenarios only check that mechanics work; they say nothing about whether the game is fun, which needs hand playtesting.
-
-## 2026-10-12 — Conduction is for vacuum
-
-Playtest note: hearing through the hull should only happen in vacuum. Pressurized rooms should sound normal, and decompression should rush.
-
-**Decision:** scale conducted sound by `1 − air at the listener`. In atmosphere the air path takes over, so you hear normal sound, plus wind from gas moving past the ship.
-
-**Why:** a single scale factor keeps the model physical. Air drowns out the hull's ring, so there is no separate mode switch that could get out of sync with the gas field.

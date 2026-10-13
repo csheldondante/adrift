@@ -17,6 +17,7 @@ import { Physics, type Body } from '../physics/Physics';
 import { MAT_RGB } from '../pixel/materials';
 import type { PixelBody } from '../pixel/PixelBody';
 import { PixelWorld } from '../pixel/PixelWorld';
+import { Welder } from '../pixel/Welder';
 import { rasterPixels, type InteriorMask } from '../pixel/lightRaster';
 import type { Light, Lighting } from '../render/Lighting';
 import { ORDER } from '../render/order';
@@ -57,6 +58,7 @@ const v2 = { x: 0, y: 0 };
 export class Game {
   readonly physics: Physics;
   readonly pixels: PixelWorld;
+  readonly welder: Welder;
   readonly ship: Ship;
   readonly particles = new Particles();
   readonly hazards = new Hazards();
@@ -108,6 +110,7 @@ export class Game {
     const { stage, field } = app;
     this.physics = new Physics(FIXED_DT);
     this.pixels = new PixelWorld(this.physics, level.terrain);
+    this.welder = new Welder(this.pixels);
     this.pixels.terrain.rebuildAllColliders();
     const tg = level.terrain;
     this.worldW = tg.w * CELL;
@@ -156,6 +159,10 @@ export class Game {
     this.slots = [this.cutter, this.grapple];
     this.walk = new HullWalk(this.ctx);
     this.arms = new Arms(this.ctx, this.walk);
+    this.welder.onWeld = (x, y) => {
+      for (let k = 0; k < 14; k++) this.particles.spark(x, y, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, 0.3 + Math.random() * 0.4);
+      this.sound.emit('weld', x, y, 1, [this.pixels.terrain, this.pixels.bodyAt(x, y) ?? undefined]);
+    };
     this.machinery.onStop = (body, x, y, speed) => this.sound.emit('slam', x, y, Math.min(1, speed / 12), [body]);
 
     this.pixels.events = {
@@ -402,6 +409,7 @@ export class Game {
     this.slots[1].fixedUpdate(dt, input.down('Mouse2'));
     this.hazards.update(dt);
     this.pixels.flush();
+    this.welder.fixedUpdate();
     this.machinery.fixedUpdate(dt);
     this.security.fixedUpdate(dt);
     this.projectiles.step(dt);

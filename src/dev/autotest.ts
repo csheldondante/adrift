@@ -4,6 +4,7 @@
 import { CELL, tune } from '../config';
 import type { Input } from '../core/Input';
 import type { Game } from '../game/Game';
+import { M } from '../pixel/materials';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const m = (c: number) => c * CELL;
@@ -47,7 +48,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
   };
 
   await sleep(800);
-  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'laser', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope', 'walk', 'arms', 'sound'] : mode.split(',');
+  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'laser', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope', 'walk', 'arms', 'sound', 'heat'] : mode.split(',');
   for (const md of modes) {
     restart();
     await sleep(300);
@@ -499,6 +500,90 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       input.simulateUp('Mouse2');
       await sleep(100);
       log('click release', { attachedBefore: st, after: g.grapple.state });
+    }
+    if (md === 'heat') {
+      // 1) the beam on a hull block vs an armor block in open space: hull gives quickly,
+      //    armor glows white first and works the laser harder
+      const g = game();
+      const px = g.pixels;
+      const grid = px.terrain.grid;
+      const block = (mat: number) => {
+        px.paintTerrain(120, 100, 136, 116, mat, false);
+        let n = 0;
+        for (let y = 100; y < 116; y++) for (let x = 120; x < 136; x++) if (grid.mat[y * grid.w + x]) n++;
+        return n;
+      };
+      const burn = async (mat: number) => {
+        const n0 = block(mat);
+        g.cutter.heat = 0;
+        let firstMs = -1;
+        let peak = 0;
+        const t0 = performance.now();
+        await hold('Mouse0', 1200, () => {
+          place(m(100), m(108), 0);
+          aim(m(128), m(108));
+          if (firstMs < 0 && block2() < n0) firstMs = Math.round(performance.now() - t0);
+          for (let x = 118; x < 128; x++) peak = Math.max(peak, grid.heat[108 * grid.w + x]);
+        });
+        const out = { removed: n0 - block2(), firstCellMs: firstMs, laserHeat: +g.cutter.heat.toFixed(2), peakHeat: +peak.toFixed(2) };
+        await sleep(2500);
+        let glow = 0;
+        for (let y = 100; y < 116; y++) for (let x = 116; x < 136; x++) glow = Math.max(glow, grid.heat[y * grid.w + x]);
+        px.paintTerrain(110, 96, 140, 120, 0, false); // clear (also any cut-loose pieces stay as bodies)
+        return { ...out, glowAfter2_5s: +glow.toFixed(2) };
+      };
+      const block2 = () => {
+        let n = 0;
+        for (let y = 100; y < 116; y++) for (let x = 120; x < 136; x++) if (grid.mat[y * grid.w + x]) n++;
+        return n;
+      };
+      const hull = await burn(M.HULL);
+      await sleep(2500);
+      const armor = await burn(M.ARMOR);
+      log('heat-cut', { hull, armor });
+      // 2) weld a crate to the hull: press it flat against the prow, heat the seam
+      const crates = px.bodies.filter((b) => !b.explosiveCells && !b.tags.salvage && !b.tags.machine && !b.tags.label && b.body.mass() > 60);
+      const wall = px.raycast(20, 47.5, 1, 0, 40);
+      if (!wall || crates.length < 3) {
+        log('heat-weld', { skipped: !wall ? 'no wall' : 'not enough crates' });
+        continue;
+      }
+      const c1 = crates[0];
+      const settle = (b: typeof c1, x: number, y: number) => {
+        b.body.setTranslation({ x, y }, true);
+        b.body.setRotation(0, true);
+        b.body.setLinvel({ x: 0, y: 0 }, true);
+        b.body.setAngvel(0, true);
+      };
+      place(12, 47.5, 0);
+      const solid0 = solidCount();
+      const bodies0 = px.bodies.length;
+      const hy = wall.y - (c1.grid.h * CELL) / 2;
+      const hx = wall.x - c1.grid.w * CELL - 0.03;
+      const welds0 = g.welder.welds;
+      let tries = 0;
+      // the crates were spawned at level start, long past the weld grace
+      while (g.welder.welds === welds0 && tries++ < 40) {
+        settle(c1, hx, hy);
+        px.heatCircle(wall.x, wall.y, 0.9, 0.5);
+        await sleep(16);
+      }
+      log('heat-weld', { welded: g.welder.welds > welds0, ms: tries * 16, crateGone: !c1.alive, terrainCellsAdded: solidCount() - solid0, bodiesDelta: px.bodies.length - bodies0 });
+      // 3) two crates welded into one body in open space (a cold one pressed onto a hot one)
+      const [a, b] = [crates[1], crates[2]];
+      const ax = 20;
+      const ay = 30;
+      const welds1 = g.welder.welds;
+      tries = 0;
+      while (g.welder.welds === welds1 && tries++ < 40) {
+        settle(a, ax, ay);
+        settle(b, ax + a.grid.w * CELL + 0.03, ay);
+        px.heatCircle(ax + a.grid.w * CELL - 0.1, ay + Math.min(a.grid.h, b.grid.h) * CELL * 0.5, 0.7, 0.5);
+        await sleep(16);
+      }
+      const merged = px.bodies[px.bodies.length - 1];
+      log('heat-weld2', { welded: g.welder.welds > welds1, aGone: !a.alive, bGone: !b.alive, mergedMass: Math.round(merged.body.mass()) });
+      await shot('heat');
     }
     if (md === 'glow') {
       // cutter on an uncuttable girder (antenna mast): it should glow but not lose pixels

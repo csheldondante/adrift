@@ -62,14 +62,21 @@ export const tune = {
   },
   cutter: {
     radius: 0.55, // m
-    damagePerSecond: 420, // hp/s at beam center
+    damagePerSecond: 650, // hp/s at beam center, once a cell is past its burn point
     range: 200, // m (effectively unlimited; the raycast stops at the first solid pixel)
     heat: 0.9, // gas-field heat injected per second
-    glowRate: 3, // visual surface heat per second at the beam center (1 ≈ bright orange)
+    glowRate: 6, // heat energy per second at the beam center (hull: 1 heat ≈ bright orange; burns above 0.5)
     push: 600, // N pushed onto a loose body the beam is hitting (radiation pressure, tuned for fun)
     heatPerSecond: 0.22, // laser heat gained while firing (≈4.5 s from cold to overheat)
     coolPerSecond: 0.45, // laser heat lost while not firing
     overheatCoolPerSecond: 0.4, // when overheated: locked out until it has cooled all the way down
+  },
+  heat: {
+    conduction: 4, // 1/s heat exchange between neighboring cells (the glow spreads around a cut)
+    weldHeat: 0.6, // heat at a contact that fuses two pieces pressed together
+    weldMinCells: 4, // hot touching cell pairs needed for a weld
+    weldSpeed: 1.5, // m/s max relative speed at the joint (pressed, not bumped)
+    weldGrace: 1.5, // s after a piece is cut free before it can weld (else it re-fuses across the kerf)
   },
   gas: {
     stiffness: 900, // pressure -> flow acceleration (field units)

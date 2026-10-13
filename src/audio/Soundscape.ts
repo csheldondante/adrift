@@ -56,6 +56,7 @@ export type SoundKind =
   | 'thunk' // harpoon bit into matter (heard up the line)
   | 'impact' // two things collided (not the ship)
   | 'slam' // a machine hit its stop
+  | 'weld' // two hot pieces fused
   | 'explosion';
 
 /** Who receives emit(): systems depend on this, not on the audio engine. */
@@ -216,6 +217,10 @@ export class Soundscape implements SoundSink {
           break;
         case 'thunk':
           e.metal(bus, g * (0.4 + k * 0.4), 260 + Math.random() * 60, 0.7, p, 0.8);
+          break;
+        case 'weld':
+          e.metal(bus, g * 0.5, 420 + Math.random() * 80, 0.9, p, 0.6);
+          e.thump(bus, g * 0.4, p);
           break;
         default: // impact
           e.metal(bus, g * (0.15 + k * 0.7), 110 + Math.random() * 180, 0.4 + k * 0.9, p, 0.85);

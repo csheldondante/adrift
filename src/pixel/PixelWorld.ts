@@ -2,14 +2,17 @@
 // damageCircle()/raycast(); once per physics step flush() turns the accumulated cuts into
 // collider rebuilds, terrain detachment (flood fill from cut edges) and body splits.
 //
-// Likely growth: more matter types (e.g. pixel-body enemies, welded structures) plug in as
-// PixelObject subclasses; damage shapes beyond circles (beams, cones) become new damage*
-// methods that reuse the same post-processing path.
+// Welding (see Welder.ts) also lives here because it rewrites matter: a body welded to the
+// terrain is rasterized into the terrain grid (it becomes structure: static, gas-tight,
+// walkable); two bodies welded together become one body.
+//
+// Likely growth: more matter types plug in as PixelObject subclasses; damage shapes beyond
+// circles (cones) become new damage* methods that reuse the same post-processing path.
 
 import * as THREE from 'three/webgpu';
 import { CELL, tune } from '../config';
 import { F, MAT_FLAGS } from './materials';
-import { PixelGrid, type Rect } from './PixelGrid';
+import { growRect, PixelGrid, type Rect } from './PixelGrid';
 import { PixelBody, type BodyInit } from './PixelBody';
 import type { PixelObject } from './PixelObject';
 import { Terrain } from './Terrain';
@@ -47,6 +50,8 @@ export class PixelWorld {
   private readonly stamp: Uint32Array;
   private stack: Int32Array; // sized to the detach cap, not the world
   private stampCounter = 1;
+  /** Physics steps flushed so far (piece ages for the weld grace). */
+  steps = 0;
 
   constructor(
     private readonly physics: Physics,
@@ -60,6 +65,7 @@ export class PixelWorld {
 
   addBody(grid: PixelGrid, init: BodyInit): PixelBody {
     const b = new PixelBody(this.physics, grid, init, init.tags?.salvage ? ORDER.bodies + 1 : ORDER.bodies);
+    b.bornStep = this.steps;
     this.bodies.push(b);
     this.group.add(b.view.object);
     return b;
@@ -89,16 +95,177 @@ export class PixelWorld {
     for (const b of this.bodies) b.syncVisual();
   }
 
-  /** Damages all pixel matter within a world-space circle. Returns cells destroyed. */
-  damageCircle(wx: number, wy: number, radius: number, dmg: number): number {
-    let destroyed = this.damageObject(this.terrain, wx, wy, radius, dmg);
+  /**
+   * Damages all pixel matter within a world-space circle. Returns cells destroyed.
+   * heatGated: only cells above their burn point are damaged (the cutting beam).
+   */
+  damageCircle(wx: number, wy: number, radius: number, dmg: number, heatGated = false): number {
+    let destroyed = this.damageObject(this.terrain, wx, wy, radius, dmg, heatGated);
     for (const b of this.bodies) {
       b.boundingCircle(circ);
       const reach = circ.r + radius;
       if ((circ.x - wx) ** 2 + (circ.y - wy) ** 2 > reach * reach) continue;
-      destroyed += this.damageObject(b, wx, wy, radius, dmg);
+      destroyed += this.damageObject(b, wx, wy, radius, dmg, heatGated);
     }
     return destroyed;
+  }
+
+  /** Material of `o` at a world point (0 if empty or outside). */
+  matAt(o: PixelObject, wx: number, wy: number): number {
+    o.worldToLocal(wx, wy, tmp);
+    const x = Math.floor(tmp.x);
+    const y = Math.floor(tmp.y);
+    return o.grid.inside(x, y) ? o.grid.mat[y * o.grid.w + x] : 0;
+  }
+
+  /** The pixel object with solid matter at a world point (terrain first), skipping `ignore`. */
+  objectAt(wx: number, wy: number, ignore?: PixelObject): PixelObject | null {
+    if (this.terrain !== ignore && this.matAt(this.terrain, wx, wy)) return this.terrain;
+    for (const b of this.bodies) {
+      if (b === ignore) continue;
+      b.boundingCircle(circ);
+      if ((circ.x - wx) ** 2 + (circ.y - wy) ** 2 > circ.r * circ.r) continue;
+      if (this.matAt(b, wx, wy)) return b;
+    }
+    return null;
+  }
+
+  /**
+   * Welds a loose body into the terrain: its cells are rasterized into the terrain grid
+   * (nearest cell, sampled from the terrain side so the seam has no holes) and the body is
+   * removed. Cells landing on existing terrain are dropped. Connectivity is then re-checked
+   * like a cut, so a piece only touching by a corner falls straight off again.
+   */
+  weldToTerrain(b: PixelBody): void {
+    const tg = this.terrain.grid;
+    const r = this.stampInto(b, tg, 0, 0, 1, 0);
+    if (r) {
+      for (let y = r.y0; y < r.y1; y++) for (let x = r.x0; x < r.x1; x++) this.terrain.markHot(y * tg.w + x);
+      this.terrain.paint(r);
+      this.terrain.markCollidersDirty(r);
+      this.pendingTerrainCuts.push(r);
+      this.events.terrainChanged?.(r);
+    }
+    this.removeBody(b);
+  }
+
+  /**
+   * Welds two bodies into one, in the frame of the heavier. Momentum is conserved (spin is
+   * mass-weighted, an approximation); tags come from the heavier piece.
+   */
+  weldBodies(a: PixelBody, b: PixelBody): PixelBody {
+    if (a.body.mass() > b.body.mass()) [a, b] = [b, a]; // b = base
+    const ag = a.grid;
+    const bg = b.grid;
+    // a's corners in b's cell frame -> union bounds
+    let x0 = 0;
+    let y0 = 0;
+    let x1 = bg.w;
+    let y1 = bg.h;
+    for (const [cx, cy] of [
+      [0, 0],
+      [ag.w, 0],
+      [0, ag.h],
+      [ag.w, ag.h],
+    ]) {
+      a.localToWorld(cx, cy, tmp);
+      b.worldToLocal(tmp.x, tmp.y, tmp2);
+      x0 = Math.min(x0, Math.floor(tmp2.x));
+      y0 = Math.min(y0, Math.floor(tmp2.y));
+      x1 = Math.max(x1, Math.ceil(tmp2.x));
+      y1 = Math.max(y1, Math.ceil(tmp2.y));
+    }
+    const g = new PixelGrid(x1 - x0, y1 - y0);
+    for (let y = 0; y < bg.h; y++)
+      for (let x = 0; x < bg.w; x++) {
+        const i = y * bg.w + x;
+        if (!bg.mat[i]) continue;
+        const j = (y - y0) * g.w + (x - x0);
+        g.mat[j] = bg.mat[i];
+        g.hp[j] = bg.hp[i];
+        g.shade[j] = bg.shade[i];
+        g.heat[j] = bg.heat[i];
+      }
+    // the new grid's frame is b's, shifted by (x0, y0) cells
+    b.localToWorld(x0, y0, tmp);
+    this.stampInto(a, g, tmp.x, tmp.y, b.cos, b.sin);
+    const ma = a.body.mass();
+    const mb = b.body.mass();
+    const va = a.body.linvel();
+    const vb = b.body.linvel();
+    const init: BodyInit = {
+      x: tmp.x,
+      y: tmp.y,
+      angle: b.angle,
+      vx: (va.x * ma + vb.x * mb) / (ma + mb),
+      vy: (va.y * ma + vb.y * mb) / (ma + mb),
+      w: (a.body.angvel() * ma + b.body.angvel() * mb) / (ma + mb),
+      tags: { ...b.tags },
+    };
+    this.removeBody(a);
+    this.removeBody(b);
+    const nb = this.addBody(g, init);
+    nb.needsSplitCheck = true; // a seam touching only at corners comes apart again
+    return nb;
+  }
+
+  /**
+   * Copies body `src`'s solid cells into grid `dst` whose cell (0,0) corner sits at world
+   * (ox, oy) rotated by (cos, sin). Samples src at each dst cell center over src's bounds
+   * (no holes). Only fills empty dst cells. Returns the dst rect written, or null.
+   */
+  private stampInto(src: PixelBody, dst: PixelGrid, ox: number, oy: number, cos: number, sin: number): Rect | null {
+    const sg = src.grid;
+    // src bounds in dst cell coords
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    const toDst = (wx: number, wy: number) => {
+      const dx = wx - ox;
+      const dy = wy - oy;
+      tmp2.x = (cos * dx + sin * dy) / CELL;
+      tmp2.y = (-sin * dx + cos * dy) / CELL;
+    };
+    for (const [cx, cy] of [
+      [0, 0],
+      [sg.w, 0],
+      [0, sg.h],
+      [sg.w, sg.h],
+    ]) {
+      src.localToWorld(cx, cy, tmp);
+      toDst(tmp.x, tmp.y);
+      x0 = Math.min(x0, tmp2.x);
+      y0 = Math.min(y0, tmp2.y);
+      x1 = Math.max(x1, tmp2.x);
+      y1 = Math.max(y1, tmp2.y);
+    }
+    const ix0 = Math.max(0, Math.floor(x0));
+    const iy0 = Math.max(0, Math.floor(y0));
+    const ix1 = Math.min(dst.w, Math.ceil(x1));
+    const iy1 = Math.min(dst.h, Math.ceil(y1));
+    let r: Rect | null = null;
+    for (let y = iy0; y < iy1; y++)
+      for (let x = ix0; x < ix1; x++) {
+        const j = y * dst.w + x;
+        if (dst.mat[j]) continue;
+        // dst cell center -> world -> src cell
+        const lx = (x + 0.5) * CELL;
+        const ly = (y + 0.5) * CELL;
+        src.worldToLocal(ox + cos * lx - sin * ly, oy + sin * lx + cos * ly, tmp);
+        const sx = Math.floor(tmp.x);
+        const sy = Math.floor(tmp.y);
+        if (!sg.inside(sx, sy)) continue;
+        const i = sy * sg.w + sx;
+        const m = sg.mat[i];
+        if (!(MAT_FLAGS[m] & F.SOLID)) continue;
+        dst.mat[j] = m;
+        dst.hp[j] = sg.hp[i];
+        dst.shade[j] = sg.shade[i];
+        dst.heat[j] = sg.heat[i];
+        r = growRect(r, x, y);
+      }
+    return r;
   }
 
   /**
@@ -148,9 +315,9 @@ export class PixelWorld {
     for (const b of this.bodies) b.cool(dt);
   }
 
-  private damageObject(o: PixelObject, wx: number, wy: number, radius: number, dmg: number): number {
+  private damageObject(o: PixelObject, wx: number, wy: number, radius: number, dmg: number, heatGated: boolean): number {
     o.worldToLocal(wx, wy, tmp);
-    const res = o.grid.damageCircle(tmp.x, tmp.y, radius / CELL, dmg);
+    const res = o.grid.damageCircle(tmp.x, tmp.y, radius / CELL, dmg, 256, heatGated);
     if (res.changed) o.paint(res.changed);
     if (res.removed) {
       if (o === this.terrain) {
@@ -205,6 +372,7 @@ export class PixelWorld {
 
   /** Turns this step's cuts into collider updates, detached terrain and split bodies. */
   flush(): void {
+    this.steps++;
     if (this.pendingTerrainCuts.length) {
       const cuts = this.pendingTerrainCuts;
       this.pendingTerrainCuts = [];

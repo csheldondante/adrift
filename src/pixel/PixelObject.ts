@@ -6,11 +6,13 @@
 // lighting) reading a material-id texture instead of baked RGBA. Painting is isolated in
 // `paint()` so that swap only touches this file.
 
-import { CELL } from '../config';
-import { cellColor, MAT_HP } from './materials';
+import { CELL, tune } from '../config';
+import { cellColor, MAT_COOL, MAT_HEATCAP, MAT_HP, MAX_HEAT } from './materials';
 import { PixelGrid, type Rect } from './PixelGrid';
 import type { PhysOwner } from '../physics/Physics';
 import { PixelView } from '../render/PixelView';
+
+let scratchHot = new Int32Array(1024);
 
 export abstract class PixelObject implements PhysOwner {
   abstract readonly kind: 'terrain' | 'pixelBody';
@@ -43,7 +45,17 @@ export abstract class PixelObject implements PhysOwner {
     return this.hot.size;
   }
 
-  /** Adds visual heat in a circle (local cell units). Works on any solid material. */
+  /** The cells currently holding heat (flat indices). Don't mutate while iterating. */
+  get hotCells(): ReadonlySet<number> {
+    return this.hot;
+  }
+
+  /** Marks a cell as holding heat (after writing grid.heat directly). */
+  markHot(i: number): void {
+    if (this.grid.heat[i] > 0) this.hot.add(i);
+  }
+
+  /** Adds heat energy in a circle (local cell units); each material warms by amount / heatCap. */
   heatCircle(cx: number, cy: number, r: number, amount: number): void {
     const g = this.grid;
     const x0 = Math.max(0, Math.floor(cx - r));
@@ -55,23 +67,54 @@ export abstract class PixelObject implements PhysOwner {
         const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
         if (d > r || !g.solid(x, y)) continue;
         const i = y * g.w + x;
-        g.heat[i] = Math.min(1.2, g.heat[i] + amount * (1 - d / r));
+        g.heat[i] = Math.min(MAX_HEAT, g.heat[i] + (amount * (1 - d / r)) / MAT_HEATCAP[g.mat[i]]);
         this.hot.add(i);
         this.paintCell(i);
       }
   }
 
-  /** Cools hot cells and repaints them. Call once per frame. */
+  /**
+   * Conducts heat into neighboring solid cells, radiates it away per material, and repaints.
+   * Call once per frame. Conduction is what makes the metal around a cut glow (and weld).
+   */
   cool(dt: number): void {
     if (this.hot.size === 0) return;
     const g = this.grid;
-    const k = Math.exp(-dt * 1.1);
-    for (const i of this.hot) {
-      const h = g.heat[i] * k - dt * 0.02;
-      if (h <= 0.01 || g.mat[i] === 0) {
-        g.heat[i] = 0;
+    const { w, h, mat, heat } = g;
+    // snapshot: cells warmed this pass join the set but aren't processed until next frame
+    let cells = scratchHot;
+    if (cells.length < this.hot.size) cells = scratchHot = new Int32Array(this.hot.size * 2);
+    let n = 0;
+    for (const i of this.hot) cells[n++] = i;
+    const k = Math.min(0.2, tune.heat.conduction * dt);
+    for (let c = 0; c < n; c++) {
+      const i = cells[c];
+      if (mat[i] === 0) continue;
+      const x = i % w;
+      const y = (i - x) / w;
+      // each pair moves heat once: only the hotter side gives
+      for (let d = 0; d < 4; d++) {
+        const nx = d === 0 ? x - 1 : d === 1 ? x + 1 : x;
+        const ny = d === 2 ? y - 1 : d === 3 ? y + 1 : y;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const j = ny * w + nx;
+        if (mat[j] === 0 || heat[j] >= heat[i]) continue;
+        const q = (heat[i] - heat[j]) * k;
+        heat[i] -= q;
+        heat[j] += q;
+        if (!this.hot.has(j)) {
+          this.hot.add(j);
+          this.paintCell(j);
+        }
+      }
+    }
+    for (let c = 0; c < n; c++) {
+      const i = cells[c];
+      const t = heat[i] * Math.exp(-dt * MAT_COOL[mat[i]]) - dt * 0.01;
+      if (t <= 0.01 || mat[i] === 0) {
+        heat[i] = 0;
         this.hot.delete(i);
-      } else g.heat[i] = h;
+      } else heat[i] = t;
       this.paintCell(i);
     }
   }

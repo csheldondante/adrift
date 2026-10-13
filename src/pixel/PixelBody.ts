@@ -39,6 +39,8 @@ export class PixelBody extends PixelObject {
   /** Set when cells were removed; PixelWorld re-checks connectivity at flush. */
   needsSplitCheck = false;
   explosiveCells = 0;
+  /** PixelWorld step at which this piece came into being (weld grace after a cut). */
+  bornStep = 0;
 
   constructor(
     private readonly physics: Physics,

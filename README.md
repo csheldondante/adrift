@@ -32,7 +32,7 @@ The top-left minimap reveals the ship as you explore. It always shows you (white
 | Mouse | Aim: the ship always turns to face the cursor |
 | Space | Thrust forward |
 | F | Headlamp on/off (you need it to see; sensors can see it too) |
-| Left mouse (hold) | Cutter laser (pushes loose things; watch the heat meter, overheating locks it until cool) |
+| Left mouse (hold) | Cutter laser. It heats what it hits; a material gives way past its burn point (armor and girders only at white heat, and they work the laser harder). Hot metal pressed together welds: push a plate into a breach and heat the seam. Pushes loose things; overheating locks it until cool |
 | Right mouse | Fire harpoon; click again to let go; hold to winch in (clamps on contact) |
 | (drift slowly into debris) | The four arms catch it: carry it as a shield or ram |
 | E | Let go of what the arms hold (it keeps its momentum). Otherwise clamp onto the hull (or let go); then **A / D** walk along it on the arms and **Space** pushes off. The camera rolls so the hull is down. |

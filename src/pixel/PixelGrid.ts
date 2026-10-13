@@ -2,10 +2,10 @@
 // circular damage, greedy rectangle merging (colliders), flood fill / components (detachment)
 // and DDA raycast. Everything here is in local cell units; owners handle world transforms.
 //
-// Likely growth: per-cell temperature, more layers (wiring, background wall). Add parallel
-// typed arrays here rather than packing bits into `mat`.
+// Likely growth: more layers (wiring, background wall). Add parallel typed arrays here rather
+// than packing bits into `mat`.
 
-import { F, MAT_ARMOR, MAT_FLAGS, MAT_HP, M } from './materials';
+import { F, MAT_ARMOR, MAT_BURN, MAT_FLAGS, MAT_HP, M } from './materials';
 
 export interface Rect {
   x0: number;
@@ -27,6 +27,9 @@ export interface DamageResult {
   destroyed: DestroyedCell[];
 }
 
+/** Heat above the burn point over which beam damage ramps from nothing to full. */
+const BURN_RAMP = 0.12;
+
 export function hash2(x: number, y: number): number {
   let h = (x * 374761393 + y * 668265263) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -37,7 +40,7 @@ export class PixelGrid {
   readonly mat: Uint8Array;
   readonly hp: Float32Array;
   readonly shade: Uint8Array;
-  /** Per-cell visual heat (0..~1.2): glow from the cutter, cools over time. Cosmetic only. */
+  /** Per-cell heat (0..MAX_HEAT): glows, conducts, gates beam damage (burn point) and welds. */
   readonly heat: Float32Array;
 
   constructor(
@@ -80,8 +83,10 @@ export class PixelGrid {
   /**
    * Damages cells in a circle (cell units). Full damage inside 60% of the radius, linear
    * falloff to the edge. Returns the changed region and the cells that were destroyed.
+   * heatGated (the beam): a cell only takes damage above its burn point, ramping to full
+   * over BURN_RAMP of heat.
    */
-  damageCircle(cx: number, cy: number, r: number, dmg: number, maxDestroyedReport = 256): DamageResult {
+  damageCircle(cx: number, cy: number, r: number, dmg: number, maxDestroyedReport = 256, heatGated = false): DamageResult {
     const x0 = Math.max(0, Math.floor(cx - r));
     const y0 = Math.max(0, Math.floor(cy - r));
     const x1 = Math.min(this.w, Math.ceil(cx + r) + 1);
@@ -100,9 +105,15 @@ export class PixelGrid {
         if (m === M.EMPTY) continue;
         const armor = MAT_ARMOR[m];
         if (armor === 0) continue;
+        let gate = 1;
+        if (heatGated) {
+          gate = (this.heat[i] - MAT_BURN[m]) / BURN_RAMP;
+          if (gate <= 0) continue;
+          if (gate > 1) gate = 1;
+        }
         const d = Math.sqrt(d2);
         const fall = d <= inner ? 1 : 1 - (d - inner) / (r - inner);
-        this.hp[i] -= dmg * armor * fall;
+        this.hp[i] -= dmg * armor * fall * gate;
         res.changed = growRect(res.changed, x, y);
         if (this.hp[i] <= 0) {
           if (res.destroyed.length < maxDestroyedReport || MAT_FLAGS[m] & F.EXPLOSIVE) {
