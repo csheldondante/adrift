@@ -1,13 +1,17 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <style>html, body { margin: 0; background: #04040a; }</style>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Space Junkers</title>
     <link rel="icon" href="data:," />
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!-- shown until the first level is built (a few seconds); main.ts removes it -->
+      <div id="loading" style="position: fixed; inset: 0; display: grid; place-items: center; background: #04040a; color: #8a93a6; font: 16px/1.6 ui-monospace, monospace; z-index: 10">Loading the derelict…</div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

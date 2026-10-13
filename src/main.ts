@@ -64,6 +64,7 @@ async function boot(): Promise<void> {
   console.log(`level: ${first.name} seed ${first.seed} rooms ${first.rooms.length} entities ${first.entities.length}`);
   const background = new Background(stage, first.center);
   let game = new Game(app, first);
+  document.getElementById('loading')?.remove();
 
   const restart = () => {
     game.dispose();

@@ -4,6 +4,8 @@ A 2D zero-G salvage game: fly on inertia, carve a derelict apart pixel by pixel,
 It draws on PixelJunk Shooter's handling and Noita-style destructible pixels.
 The design doc is at `.claude/docs/design/Zero_G_Salvage_Reconciled_Prototype_Handoff.md`.
 
+**Play:** https://csheldondante.github.io/space_junkers/ — needs a browser with WebGPU: desktop Chrome or Edge (113+). Keyboard and mouse.
+
 ## Run
 
 ```sh
@@ -100,3 +102,11 @@ Nothing is scripted. Every effect comes from these shared inputs.
 - New gas channels: widen the `GasField` state.
 
 Each file's header comment notes how that module is likely to grow.
+
+## License
+
+Source-available, not open source: [PolyForm Noncommercial 1.0.0](LICENSE).
+You may play, read, change and share it for any noncommercial purpose
+(personal, hobby, study, research, nonprofit and educational use). Commercial
+use — selling it, ads, or using it in a commercial product — is not
+permitted.
