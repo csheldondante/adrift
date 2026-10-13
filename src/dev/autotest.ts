@@ -511,6 +511,25 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         await sleep(500);
       }
     }
+    if (md === 'probe') {
+      // a close look at the probe: arms out, cutter arm firing at a crate
+      const g = game();
+      const crate = g.pixels.bodies.find((b) => !b.explosiveCells && !b.tags.salvage && b.body.mass() > 100)!;
+      crate.body.setTranslation({ x: 23, y: 79.5 }, true);
+      crate.body.setLinvel({ x: 0, y: 0 }, true);
+      place(29, 80.5, Math.PI);
+      g.zoom = 9;
+      g.debugCamera = { x: 27, y: 80.5 };
+      await hold('Mouse0', 700, () => {
+        place(29, 80.5, Math.PI);
+        aim(crate.body.worldCom().x, crate.body.worldCom().y);
+      });
+      input.simulateDown('Mouse0');
+      await sleep(150);
+      await shot('probe');
+      input.simulateUp('Mouse0');
+      g.debugCamera = null;
+    }
     if (md === 'scan') {
       // knock on the hall wall next to the chamber (?level=lantern): the pulse should find the
       // wiring buried in it, the breach's cavity, and the chamber beyond

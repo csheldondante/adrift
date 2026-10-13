@@ -13,7 +13,7 @@ Built decisions and their rationale live in `docs/DECISIONS.md`. This file is fo
 
 ## Making it a game: playtest notes and roadmap (user, 2026-10-12)
 
-**Status:** in progress. A (materials and heat), B (robots with powered organs), C (power and pressure in the walls, `?level=lab`) D (the hand-built "Lantern" level, now the default) and E (vibration scan: V, footfalls) built 2026-10-12; see DECISIONS.
+**Status:** in progress. A (materials and heat), B (robots with powered organs), C (power and pressure in the walls, `?level=lab`) D (the hand-built "Lantern" level, now the default), E (vibration scan: V, footfalls) and F (round probe hull, cutter arm, winch hub) built 2026-10-12; see DECISIONS.
 
 **What works (keep and build on):**
 - The laser cutter: the most fun thing, especially precision cuts.

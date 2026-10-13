@@ -2,6 +2,30 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-12 — The probe looks like a probe (milestone F)
+
+Playtest: "The ship itself should look more like a submarine or deep sea probe", following the user's concept art (`C:/Users/cshel/Pictures/ShipConceptArtMockup.png`). The concept shows a round hull with a rotating ring and four articulated arms. The cutter is an arm, and the grapple is a winch.
+
+**Decision:**
+- **Hull.** A round hull, 2.3 × 1.9 m, drawn procedurally at the world's 8 px/m so it matches the pixel matter:
+  - off-white plates with seams, grime and shadowed lower plates;
+  - a yellow and black hazard band for the ring, with the harpoon **winch drum at its hub**, where the line leaves (the default `com` pivot);
+  - a cockpit window and headlamp at the nose, twin rear thrusters with twin plumes, and orange running lights.
+- **Collider.** A matching 12-gon. Density 160 → 90 keeps the mass at about 295 kg (from 306), so thrust and handling tuning carry over.
+- **Arms** are recolored off-white and yellow, with dark claws.
+- **The cutter is a fifth arm** under the nose: two bones of 0.75 m.
+  - While firing, its tip swings out toward the aim, up to 1.35 m, stopping 0.2 m short of any wall. When idle it folds under the nose.
+  - The beam leaves the tip along the mount → aim line.
+  - It is purely kinematic: the tip eases at 16/s, and there's no collider.
+
+**Measured:** the full classic suite passes. Shifts from the new shape:
+- Clamp standoff gap 1.85 → 2.48 m.
+- Harpoon snug 0.3 → 1.3 s.
+- Arm catch 0.14 → 0.7 s.
+- Rope heading error is now 3.5–3.7° for both pivots.
+
+**Revisit if:** the round hull snags corners differently in play, or the cutter arm reads as too small at normal zoom.
+
 ## 2026-10-12 — Vibration scan (milestone E)
 
 Playtest: "the one downside of the darkness right now is it is hard to tell what is and isn't cuttable". The suggested fix was to let walking on a surface scan it with vibrations and find the hidden innards.

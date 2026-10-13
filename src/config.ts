@@ -21,7 +21,7 @@ export const tune = {
     thrust: 2600, // N
     turnRate: 4.5, // rad/s max spin from A/D
     turnAccel: 45, // rad/s² (spin-up and braking; torque scales with inertia)
-    density: 160, // kg/m² (ship collider, ~300 kg)
+    density: 90, // kg/m² (round 2.3 × 1.9 m hull, ~306 kg)
     flightAssist: true, // RCS jets brake drift when not thrusting (visible as side puffs)
     brakeForce: 700, // N of braking from the RCS jets (≈2.3 m/s² unloaded)
     maxHealth: 100,

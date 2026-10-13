@@ -87,9 +87,9 @@ export class Arms {
         stepDur: 0.15,
         from: { x: 0, y: 0 },
         last: { x: 0, y: 0 },
-        upper: new Ribbon(0xa3adbd, ORDER.ship - 1),
-        fore: new Ribbon(0xc3cbd8, ORDER.ship - 1),
-        claw: [new Ribbon(0xb8c2d0, ORDER.ship - 1), new Ribbon(0xb8c2d0, ORDER.ship - 1)],
+        upper: new Ribbon(0xd9d2c0, ORDER.ship - 1),
+        fore: new Ribbon(0xe0a32a, ORDER.ship - 1),
+        claw: [new Ribbon(0x2a2d33, ORDER.ship - 1), new Ribbon(0x2a2d33, ORDER.ship - 1)],
       };
       this.arms.push(arm);
       ctx.fx.add(arm.upper.mesh, arm.fore.mesh, arm.claw[0].mesh, arm.claw[1].mesh);
