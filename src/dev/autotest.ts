@@ -1045,6 +1045,311 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       await sleep(400);
       await shot('organs');
     }
+    if (md === 'firstlock') {
+      // Reliquary's first lock, played from the battery on: hold the entry's battery (E) near
+      // the dead socket and let the auto-plug put it in; the door opens and the room lights up
+      const g = game();
+      const lv = (window as unknown as { __level: { locks?: { entry: number; doors: { type: string; parent: number; x: number; y: number }[] }; rooms: { id: number; x0: number; y0: number; x1: number; y1: number }[] } }).__level;
+      const locks = lv.locks!;
+      const door = locks.doors.find((d) => d.parent === locks.entry && d.type === 'power')!;
+      const room = lv.rooms.find((r) => r.id === locks.entry)!;
+      const sock = g.power.socketSpots().filter((sp) => !sp.live && sp.x > room.x0 - 2 && sp.x < room.x1 + 2 && sp.y > room.y0 - 2 && sp.y < room.y1 + 2)[0];
+      const battery = g.pixels.bodies.filter((b) => b.grid.w === 24 && b.grid.h === 12).sort((a, b) => {
+        const ca = a.body.worldCom();
+        const cb = b.body.worldCom();
+        const cx = (room.x0 + room.x1) / 2;
+        const cy = (room.y0 + room.y1) / 2;
+        return Math.hypot(ca.x - cx, ca.y - cy) - Math.hypot(cb.x - cx, cb.y - cy);
+      })[0];
+      const pd = g.devices.doors.find((d) => d.spec.type === 'door' && Math.hypot(((d.spec.x0 + d.spec.x1) / 2) * CELL - door.x, ((d.spec.y0 + d.spec.y1) / 2) * CELL - door.y) < 1)!;
+      const lights0 = g.power.lights.length;
+      const sx = sock.fx + sock.nx * 6;
+      const sy = sock.fy + sock.ny * 6;
+      for (const b of g.pixels.bodies) {
+        if (b === battery || b.tags.salvage) continue;
+        const c = b.body.worldCom();
+        if (Math.hypot(c.x - sx, c.y - sy) < 12) b.body.setTranslation({ x: b.body.translation().x + 400, y: b.body.translation().y }, true);
+      }
+      place(sx, sy, Math.atan2(-sock.ny, -sock.nx));
+      aim(sx - sock.nx * 20, sy - sock.ny * 20);
+      const t = battery.body.translation();
+      const com = battery.body.worldCom();
+      battery.body.setTranslation({ x: t.x - com.x + sx - sock.nx * 3.1, y: t.y - com.y + sy - sock.ny * 3.1 }, true);
+      battery.body.setLinvel({ x: 0, y: 0 }, true);
+      battery.body.setAngvel(0, true);
+      await sleep(100);
+      await hold('KeyE', 40);
+      await sleep(200);
+      const held = g.arms.held === battery;
+      const t0 = performance.now();
+      const ptrace: unknown[] = [];
+      let nextT = 0;
+      while (performance.now() - t0 < 20000 && !g.autoPlug.plugs && battery.alive) {
+        await sleep(50);
+        const tt = performance.now() - t0;
+        if (tt > nextT) {
+          nextT += 500;
+          const c = battery.body.worldCom();
+          ptrace.push([+(tt / 1000).toFixed(1), g.autoPlug.phase, g.walk.attached ? 1 : 0, +g.ship.x.toFixed(1), +g.ship.y.toFixed(1), +c.x.toFixed(1), +c.y.toFixed(1), +battery.body.rotation().toFixed(2), +g.ship.angle.toFixed(2), +g.controls.aimX.toFixed(1), g.arms.rigidLoad === battery ? 'rigid' : 'guided', +g.ship.body.angvel().toFixed(2)]);
+        }
+      }
+      log('firstlock-trace', { sock: [+sock.fx.toFixed(1), +sock.fy.toFixed(1), sock.nx, sock.ny], ptrace });
+      const plugMs = Math.round(performance.now() - t0);
+      await sleep(2500);
+      log('firstlock', { held, plugged: g.autoPlug.plugs > 0, plugMs, doorOpen: pd?.open ?? 'no door', doorT: pd ? +pd.t.toFixed(2) : -1, lightsBefore: lights0, lightsAfter: g.power.lights.length, live: g.power.live, alive: battery.alive });
+      g.zoom = 70;
+      g.debugCamera = { x: (room.x0 + room.x1) / 2, y: (room.y0 + room.y1) / 2 };
+      await sleep(400);
+      await shot('firstlock');
+    }
+    if (md === 'patch') {
+      // Reliquary's pressure lock, played: carry the hull plate to the breach, let the arms set
+      // it flush, weld the seam with the weld beam; the room's pump fills it and the pressure
+      // door opens
+      const g = game();
+      const lv = (window as unknown as { __level: { locks?: { doors: { type: string; parent: number; child: number; x: number; y: number }[] }; rooms: { id: number; x0: number; y0: number; x1: number; y1: number }[] } }).__level;
+      const br = lv.locks?.doors.find((d) => d.type === 'breach');
+      if (!br) {
+        log('patch', 'no breach in this layout');
+        continue;
+      }
+      const room = lv.rooms.find((r) => r.id === br.parent)!;
+      const inner = room;
+      // the wall's outward normal (into the parent room) at the breach
+      const vertical = br.x < room.x0 || br.x > room.x1;
+      const n = vertical ? { x: br.x < room.x0 ? 1 : -1, y: 0 } : { x: 0, y: br.y < room.y0 ? 1 : -1 };
+      const face = vertical ? { x: n.x > 0 ? room.x0 : room.x1, y: br.y } : { x: br.x, y: n.y > 0 ? room.y0 : room.y1 };
+      const plate = g.pixels.bodies.find((b) => (b.grid.w === 12 && b.grid.h === 40) || (b.grid.w === 40 && b.grid.h === 12))!;
+      {
+        const c0 = plate.body.worldCom();
+        log('patch-start', { cells: plate.grid.countSolid(), at: [+c0.x.toFixed(1), +c0.y.toFixed(1)], t: +g.time.toFixed(2) });
+        g.debugCamera = { x: c0.x, y: c0.y };
+        g.zoom = 20;
+        await sleep(300);
+        await shot('patch-start');
+        g.debugCamera = null;
+        g.zoom = 34;
+      }
+      // the ship 5 m out from the breach, facing it, the plate in front of it across the nose
+      const sx = face.x + n.x * 5;
+      const sy = face.y + n.y * 5;
+      const facing = Math.atan2(-n.y, -n.x);
+      // clear other junk out of the way (a battery crushed between plate and ship goes off)
+      for (const b of g.pixels.bodies) {
+        if (b === plate || b.tags.salvage) continue;
+        const c = b.body.worldCom();
+        if (Math.hypot(c.x - sx, c.y - sy) < 12) b.body.setTranslation({ x: b.body.translation().x + 400, y: b.body.translation().y }, true);
+      }
+      for (const r of g.security.robots) if (r.pb.alive) r.pb.body.setTranslation({ x: r.pb.body.translation().x + 400, y: r.pb.body.translation().y }, true);
+      place(sx, sy, facing);
+      aim(face.x - n.x * 25, face.y - n.y * 25);
+      const along = vertical ? Math.PI / 2 : 0;
+      plate.body.setTranslation({ x: sx - n.x * 2.2 - (plate.grid.w * CELL) / 2, y: sy - n.y * 2.2 - (plate.grid.h * CELL) / 2 }, true);
+      plate.body.setRotation(along - (plate.grid.w >= plate.grid.h ? 0 : Math.PI / 2) + 0.15, true);
+      plate.body.setLinvel({ x: 0, y: 0 }, true);
+      plate.body.setAngvel(0, true);
+      await sleep(200);
+      await shot('patch-0');
+      log('patch-setup', { vertical, n, face, ship: [+g.ship.x.toFixed(1), +g.ship.y.toFixed(1)], plate: [+plate.body.worldCom().x.toFixed(1), +plate.body.worldCom().y.toFixed(1)], mass: Math.round(plate.body.mass()), dims: [plate.grid.w, plate.grid.h], cells: plate.grid.countSolid(), shipMass: Math.round(g.ship.body.mass()) });
+      await hold('KeyE', 40);
+      await sleep(200);
+      const held = g.arms.held === plate;
+      await shot('patch-1');
+      // drift in until the arms set it on the wall
+      if (new URLSearchParams(location.search).has('nopatch')) {
+        // the leak case: the breach left open (hatch shut), does the room hold enough air to
+        // open the door?
+        const pd = g.devices.doors.find((d) => d.spec.type === 'pressureDoor')!;
+        const hatch = g.devices.doors.find((d) => d.spec.type === 'hatch' && (d.spec as { open?: boolean }).open === true)!;
+        const pcell = (hatch.spec as { panel: { x: number; y: number } }).panel;
+        place((pcell.x + 0.5) * CELL + ((pcell.x + 0.5) * CELL < room.x0 + 1 ? 2.2 : -2.2), (pcell.y + 0.5) * CELL, 0);
+        await sleep(200);
+        await hold('KeyG', 40);
+        const sn = (pd.spec as { sensor: { x: number; y: number } }).sensor;
+        const gs = { gas: 0, heat: 0, vx: 0, vy: 0 };
+        const tr: number[] = [];
+        for (let k = 0; k < 40; k++) {
+          await sleep(1000);
+          g.ctx.field.sample(sn.x, sn.y, gs);
+          tr.push(+gs.gas.toFixed(2));
+        }
+        log('patch-leak', { doorOpen: pd.open, gas: tr });
+        continue;
+      }
+      const t0 = performance.now();
+      // aim well beyond the wall (a near aim point swings the ship, and the plate with it)
+      const far = { x: face.x - n.x * 25, y: face.y - n.y * 25 };
+      await hold('Space', 350, () => aim(far.x, far.y));
+      const ftrace: unknown[] = [];
+      while (!g.fitter.fitting && performance.now() - t0 < 5000) {
+        aim(far.x, far.y);
+        await sleep(30);
+        if (ftrace.length < 40 && Math.round(performance.now() - t0) % 300 < 30) {
+          const pc = plate.body.worldCom();
+          ftrace.push([+g.fitter.gap.toFixed(2), +g.ship.x.toFixed(1), +g.ship.y.toFixed(1), +pc.x.toFixed(1), +pc.y.toFixed(1), +plate.body.rotation().toFixed(2)]);
+        }
+      }
+      log('fit-trace', ftrace);
+      const fitMs = Math.round(performance.now() - t0);
+      await sleep(1200);
+      await shot('patch-fitted');
+      // weld: the beam on the wall just past the plate's end
+      const c = plate.body.worldCom();
+      const half = (Math.max(plate.grid.w, plate.grid.h) * CELL) / 2;
+      const tx = -n.y;
+      const ty = n.x;
+      const seam = (k: number) => ({ x: c.x + tx * (half + 0.15) * k - n.x * 0.3, y: c.y + ty * (half + 0.15) * k - n.y * 0.3 });
+      const w0 = g.welder.welds;
+      const t1 = performance.now();
+      input.simulateDown('ShiftLeft');
+      input.simulateDown('Mouse0');
+      while (g.welder.welds === w0 && performance.now() - t1 < 10000) {
+        const s = seam(Math.floor((performance.now() - t1) / 1500) % 2 ? -1 : 1);
+        aim(s.x, s.y);
+        await sleep(30);
+      }
+      input.simulateUp('Mouse0');
+      input.simulateUp('ShiftLeft');
+      const weldMs = Math.round(performance.now() - t1);
+      const welded = g.welder.welds > w0;
+      await shot('patch-welded');
+      // shut the hatch we came in by: G at its panel
+      const hatch = g.devices.doors.find((d) => d.spec.type === 'hatch' && (d.spec as { open?: boolean }).open === true)!;
+      const pcell = (hatch.spec as { panel: { x: number; y: number } }).panel;
+      const pcx = (pcell.x + 0.5) * CELL;
+      const pcy = (pcell.y + 0.5) * CELL;
+      const inward = pcx < room.x0 + 1 ? 1 : -1;
+      place(pcx + inward * 2.2, pcy, 0);
+      await sleep(200);
+      await hold('KeyG', 40);
+      await sleep(2000);
+      const hatchShut = !hatch.open && hatch.t === 0;
+      // the room fills; the pressure door opens
+      const pd = g.devices.doors.find((d) => d.spec.type === 'pressureDoor')!;
+      const t2 = performance.now();
+      const gas = { gas: 0, heat: 0, vx: 0, vy: 0 };
+      const gtrace: number[] = [];
+      while (!pd.open && performance.now() - t2 < 40000) {
+        await sleep(1000);
+        g.ctx.field.sample((inner.x0 + inner.x1) / 2, (inner.y0 + inner.y1) / 2, gas);
+        gtrace.push(+gas.gas.toFixed(2));
+      }
+      const pumps = (g.devices as unknown as { pumps: { cell: { x: number; y: number }; outlet: { x: number; y: number } }[] }).pumps;
+      {
+        const tg = g.pixels.terrain.grid;
+        const rx0 = Math.round(inner.x0 / CELL), ry0 = Math.round(inner.y0 / CELL), rx1 = Math.round(inner.x1 / CELL), ry1 = Math.round(inner.y1 / CELL);
+        let cores = 0, coresOn = 0, cond = 0, condOn = 0;
+        for (let y = ry0 - 6; y < ry1 + 6; y++) for (let x = rx0 - 6; x < rx1 + 6; x++) {
+          const i = y * tg.w + x;
+          if (tg.mat[i] === M.POWER) { cores++; if (tg.powered[i]) coresOn++; }
+          if (tg.mat[i] === M.CONDUIT) { cond++; if (tg.powered[i]) condOn++; }
+        }
+        const cell = (x: number, y: number) => [tg.mat[y * tg.w + x], tg.powered[y * tg.w + x]];
+        log('patch-net', { rx0, ry0, rx1, ry1, cores, coresOn, cond, condOn, around: [cell(1466, 540), cell(1467, 540), cell(1468, 540), cell(1469, 540), cell(1470, 540)] });
+      }
+      log('patch-fill', { pumps: pumps.map((q) => ({ ...q, powered: g.power.powered(q.cell.x, q.cell.y), mat: g.pixels.terrain.grid.mat[q.cell.y * g.pixels.terrain.grid.w + q.cell.x] })), gas: gtrace, pumping: g.devices.pumping, sensor: (pd.spec as { sensor: unknown }).sensor, inner });
+      log('patch', { hatchShut, held, fitted: g.fitter.fitting || welded, fitMs, welded, weldMs, armsFree: g.arms.held === null, doorOpen: pd.open, fillS: +((performance.now() - t2) / 1000).toFixed(1), reactor: +g.ship.reactor.heat.toFixed(2) });
+    }
+    if (md === 'keys') {
+      // the generated lock-and-key layout: every lock type wired as intended at the start
+      const g = game();
+      const lv = (window as unknown as { __level: { locks?: { doors: { type: string }[]; stash: { what: string; locker: boolean }[] } } }).__level;
+      const locks = lv.locks;
+      await sleep(600);
+      const doors = g.devices.doors.map((d) => ({ type: d.spec.type, invert: (d.spec as { invert?: boolean }).invert ?? false, open: d.open, t: +d.t.toFixed(2) }));
+      const count = (f: (d: (typeof doors)[number]) => boolean) => doors.filter(f).length;
+      log('keys', {
+        rooms: g.devices && (window as unknown as { __level: { locks?: unknown } }).__level ? undefined : 0,
+        lockTypes: locks?.doors.reduce((a, d) => ((a[d.type] = (a[d.type] ?? 0) + 1), a), {} as Record<string, number>),
+        stash: locks?.stash.map((s) => s.what + (s.locker ? '(locker)' : '')).join(' '),
+        powerDoorsShut: `${count((d) => d.type === 'door' && !d.invert && !d.open)}/${count((d) => d.type === 'door' && !d.invert)}`,
+        maglocksShut: `${count((d) => d.type === 'door' && d.invert && !d.open)}/${count((d) => d.type === 'door' && d.invert)}`,
+        pressureShut: `${count((d) => d.type === 'pressureDoor' && !d.open)}/${count((d) => d.type === 'pressureDoor')}`,
+        hatches: count((d) => d.type === 'hatch'),
+        turretsLive: `${g.security.turrets.filter((t) => t.live).length}/${g.security.turrets.length}`,
+        sockets: g.power.socketSpots().length,
+        liveSockets: g.power.live,
+        lights: g.power.lights.length,
+        bots: g.security.robots.length,
+      });
+    }
+    if (md === 'cutrate') {
+      // how long the cutter takes to bore a hole through a 2 m wall of each material, holding
+      // the trigger through overheats (the reactor's lockouts count)
+      const g = game();
+      const px = g.pixels;
+      const grid = px.terrain.grid;
+      const out: Record<string, number> = {};
+      const only = new URLSearchParams(location.search).get('mats')?.split(',');
+      const cap = Number(new URLSearchParams(location.search).get('cap') ?? 40) * 1000;
+      for (const [name, mat] of [['plate', M.PLATE], ['hull', M.HULL], ['armor', M.ARMOR], ['frame', M.FRAME], ['door', M.PDOOR]] as const) {
+        if (only && !only.includes(name)) continue;
+        px.paintTerrain(110, 86, 150, 130, 0, false);
+        // girders above and below anchor the block (else it floats free as a body)
+        px.paintTerrain(118, 88, 138, 96, M.FRAME, false);
+        px.paintTerrain(118, 120, 138, 128, M.FRAME, false);
+        px.paintTerrain(120, 96, 136, 120, mat, false);
+        g.cutter.heat = 0;
+        const t0 = performance.now();
+        const left = () => {
+          let n = 0;
+          for (let x = 120; x < 136; x++) for (let y = 107; y < 109; y++) if (grid.mat[y * grid.w + x]) n++;
+          return n;
+        };
+        // through once the beam reaches past the block
+        const through = () => g.cutter.firing && g.cutter.beamEnd.x > m(137);
+        input.simulateDown('Mouse0');
+        while (!through() && performance.now() - t0 < cap) {
+          place(m(108), m(108), 0);
+          aim(m(140), m(108));
+          await sleep(16);
+        }
+        input.simulateUp('Mouse0');
+        out[name] = +((performance.now() - t0) / 1000).toFixed(1);
+        log('cutrate', name, out[name], 'cells left', left(), 'beam on', g.cutter.status());
+        await shot('cut-' + name);
+        await sleep(200);
+      }
+      px.paintTerrain(110, 86, 150, 130, 0, false);
+      log('cutrate (s through 2 m)', out);
+    }
+    if (md === 'carry') {
+      // turning and stopping with a crate in the arms vs bare
+      const g = game();
+      const turn = async () => {
+        const sh = g.ship;
+        const t0 = performance.now();
+        const a0 = sh.angle;
+        while (performance.now() - t0 < 5000) {
+          aim(sh.x + Math.cos(a0 + Math.PI / 2) * 10, sh.y + Math.sin(a0 + Math.PI / 2) * 10);
+          const err = Math.abs(Math.atan2(Math.sin(sh.angle - a0 - Math.PI / 2), Math.cos(sh.angle - a0 - Math.PI / 2)));
+          if (err < 0.05 && Math.abs(sh.body.angvel()) < 0.2) break;
+          await sleep(16);
+        }
+        return +((performance.now() - t0) / 1000).toFixed(2);
+      };
+      place(m(100), m(108), 0);
+      aim(m(140), m(108));
+      await sleep(500);
+      const bare = await turn();
+      const crate = g.pixels.bodies.find((b) => !b.tags.salvage && b.body.mass() > 60 && b.body.mass() < 600);
+      if (!crate) {
+        log('carry', 'no crate');
+        continue;
+      }
+      const sh = g.ship;
+      crate.body.setTranslation({ x: sh.x + Math.cos(sh.angle) * 2.6 - (crate.grid.w * CELL) / 2, y: sh.y + Math.sin(sh.angle) * 2.6 - (crate.grid.h * CELL) / 2 }, true);
+      crate.body.setLinvel({ x: 0, y: 0 }, true);
+      crate.body.setAngvel(0, true);
+      await sleep(100);
+      input.simulateDown('KeyE');
+      await sleep(40);
+      input.simulateUp('KeyE');
+      await sleep(300);
+      const held = g.arms.held === crate;
+      const loaded = await turn();
+      log('carry', { mass: Math.round(crate.body.mass()), held, turnBare: bare, turnLoaded: loaded, load: +g.ship.load.toFixed(2) });
+    }
     if (md === 'heat') {
       // 1) the beam on a hull block vs an armor block in open space: hull gives quickly,
       //    armor glows white first and works the laser harder

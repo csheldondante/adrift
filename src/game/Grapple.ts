@@ -113,6 +113,8 @@ export class Grapple implements Tool {
    * they took hold (the line then lets go).
    */
   onArrive?: () => boolean;
+  /** The arms hold something: the harpoon stays on its spool (set by the game each step). */
+  handsFull = false;
   private ripT = 0;
   /** Cores torn out so far (tests). */
   rips = 0;
@@ -168,8 +170,9 @@ export class Grapple implements Tool {
 
   /** RMB down: fire when idle; when attached, a short click releases and a hold winches in. */
   press(): void {
-    if (this.state === 'idle') this.fire();
-    else if (this.state === 'flying') this.state = 'retracting';
+    if (this.state === 'idle') {
+      if (!this.handsFull) this.fire();
+    } else if (this.state === 'flying') this.state = 'retracting';
     else if (this.state === 'attached') this.pressedWhileAttached = true;
   }
 

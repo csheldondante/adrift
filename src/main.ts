@@ -16,6 +16,7 @@ import { buildDerelict } from './game/level/derelict';
 import { buildDungeon } from './game/level/dungeon';
 import { buildLab } from './game/level/lab';
 import { buildLantern } from './game/level/lantern';
+import { buildReliquary } from './game/level/reliquary';
 import { Hud } from './ui/Hud';
 import { createDebugPanel } from './ui/DebugPanel';
 import { Minimap } from './ui/Minimap';
@@ -45,21 +46,23 @@ async function boot(): Promise<void> {
   const audio = new AudioEngine();
   const app = { stage, field, input, lighting, audio };
 
-  // The hand-built "Lantern" derelict by default. ?level=classic for the original small
-  // derelict (autotests default to it), ?level=lab for the systems test station (power,
-  // pressure, welding), ?level=dungeon for the generator (?seed=N pins it)
+  // The generated lock-and-key derelict "Reliquary" by default (?seed=N pins it).
+  // ?level=lantern for the hand-built one, ?level=classic for the original small derelict
+  // (autotests default to it), ?level=lab for the systems test station (power, pressure,
+  // welding), ?level=dungeon for the older room-graph generator
   const params = new URLSearchParams(location.search);
-  const levelName = params.get('level') ?? (params.has('autotest') ? 'classic' : 'lantern');
+  const levelName = params.get('level') ?? (params.has('autotest') ? 'classic' : 'reliquary');
   const seedParam = params.get('seed');
   const buildLevel = () => {
     if (levelName === 'classic') return buildDerelict();
     if (levelName === 'lab') return buildLab();
     if (levelName === 'dungeon') return buildDungeon(seedParam ? Number(seedParam) : undefined);
-    return buildLantern();
+    if (levelName === 'lantern') return buildLantern();
+    return buildReliquary(seedParam ? Number(seedParam) : undefined);
   };
   // level specs aren't kept around: their world-sized grids are only needed to build a run
   const first = buildLevel();
-  (window as unknown as { __level: { center: { x: number; y: number } } }).__level = { center: first.center };
+  (window as unknown as { __level: unknown }).__level = { center: first.center, locks: first.locks, rooms: first.rooms };
   if (params.has('dumpRooms')) console.log('ROOMS', JSON.stringify(first.rooms.map((r) => [r.id, r.kind, Math.round(r.x0), Math.round(r.y0), Math.round(r.x1), Math.round(r.y1)])));
   console.log(`level: ${first.name} seed ${first.seed} rooms ${first.rooms.length} entities ${first.entities.length}`);
   const background = new Background(stage, first.center);

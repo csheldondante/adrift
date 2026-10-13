@@ -1,10 +1,10 @@
 // Cutting beam: a hitscan ray to the first solid pixel. Each physics step it pours heat into
 // the matter there; cells hotter than their material's burn point give way (soft metal almost
 // at once, armor and girders only at white heat). It also heats the gas/heat field, pushes
-// loose bodies (radiation pressure, tuned for fun) and throws sparks by material. A heat meter
-// limits use: firing heats it (faster on tough material), idling cools it, and filling it
-// overheats the laser until it has cooled all the way down. Nothing is uncuttable; tough
-// things just cost more laser.
+// loose bodies (radiation pressure, tuned for fun) and throws sparks by material. It runs off
+// the ship's reactor (shared with the engine, see Reactor): firing heats the core, faster on
+// tough material, and an overheated core locks the cutter out until it cools. Nothing is
+// uncuttable; tough things just cost more reactor heat.
 //
 // The emitter is on its own articulated arm under the nose (the probe's fifth arm): it swings
 // out toward the aim while firing, clipped short of walls, and folds away when idle. The
@@ -65,10 +65,17 @@ export class Cutter implements Tool {
   private t = 0;
   /** Material under the beam (0 when not on matter). */
   material = 0;
-  /** Laser heat 0..1 (HUD meter). */
-  heat = 0;
-  /** Locked out after overheating, until heat returns to 0. */
-  overheated = false;
+  /** The ship's reactor heat (the cutter runs off it; tests set it). */
+  get heat(): number {
+    return this.ctx.ship.reactor.heat;
+  }
+  set heat(v: number) {
+    this.ctx.ship.reactor.heat = v;
+  }
+  /** The reactor overheated: locked out until it has cooled. */
+  get overheated(): boolean {
+    return this.ctx.ship.reactor.overheated;
+  }
 
   constructor(private readonly ctx: GameContext) {
     ctx.fx.add(this.glow.mesh, this.core.mesh, this.upper.mesh, this.fore.mesh, this.head.mesh);
@@ -84,15 +91,13 @@ export class Cutter implements Tool {
     this.moveArm(dt);
     if (!this.active) {
       this.material = 0;
-      this.heat = Math.max(0, this.heat - (this.overheated ? c.overheatCoolPerSecond : c.coolPerSecond) * dt);
-      if (this.overheated && this.heat <= 0) this.overheated = false;
       return;
     }
     this.weld = ctx.controls.weld;
     const pw = this.weld ? c.weldPower : 1;
-    this.heat = Math.min(1, this.heat + c.heatPerSecond * pw * (this.material ? MAT_LOAD[this.material] : 1) * dt);
-    if (this.heat >= 1) {
-      this.overheated = true;
+    const reactor = ctx.ship.reactor;
+    reactor.load(tune.reactor.laserHeat * pw * (this.material ? MAT_LOAD[this.material] : 1) * dt);
+    if (reactor.overheated) {
       ctx.ship.nose(nose);
       for (let k = 0; k < 12; k++) ctx.particles.smoke(nose.x, nose.y, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, 0.8, 0.35);
     }

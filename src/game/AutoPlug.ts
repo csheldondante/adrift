@@ -128,16 +128,30 @@ export class AutoPlug {
       this.decline();
       return playerMove;
     }
-    // face the socket (lamp and tools on it)
-    this.ctx.controls.aimX = s.fx;
-    this.ctx.controls.aimY = s.fy;
+    // fly in with the core on the far side from the wall, so it doesn't wedge between the ship
+    // and the wall (walking turns the nose, and the core, out from the wall anyway). Until the
+    // ship has turned that way round, it hangs back far enough for the core to swing clear
+    let turned = true;
+    if (this.phase === 'fly') {
+      const c = b.body.worldCom();
+      const phi = Math.atan2(c.y - sh.y, c.x - sh.x) - sh.angle;
+      const want = Math.atan2(s.ny, s.nx) - phi;
+      turned = Math.abs(Math.atan2(Math.sin(want - sh.angle), Math.cos(want - sh.angle))) < 0.5;
+      this.ctx.controls.aimX = sh.x + Math.cos(want) * 20;
+      this.ctx.controls.aimY = sh.y + Math.sin(want) * 20;
+    } else {
+      // face the socket (lamp and tools on it)
+      this.ctx.controls.aimX = s.fx;
+      this.ctx.controls.aimY = s.fy;
+    }
     // stance: beside the socket on its wall, clear of where the core goes
     const across = Math.abs(term.dx) > 0.5 ? b.grid.h : b.grid.w;
     const off = (across * CELL) / 2 + 1.4;
     const tx = -s.ny * this.side;
     const ty = s.nx * this.side;
-    const stX = s.fx + s.nx * tune.walk.standoff + tx * off;
-    const stY = s.fy + s.ny * tune.walk.standoff + ty * off;
+    const out = turned ? tune.walk.standoff : Math.max(b.grid.w, b.grid.h) * CELL + 3;
+    const stX = s.fx + s.nx * out + tx * off;
+    const stY = s.fy + s.ny * out + ty * off;
 
     if (this.phase === 'fly') {
       this.message = 'Auto-plug: closing on the socket…';
@@ -146,7 +160,7 @@ export class AutoPlug {
         const dx = stX - sh.x;
         const dy = stY - sh.y;
         const d = Math.hypot(dx, dy);
-        if (d < tune.walk.reach + 0.5 && this.walk.tryAttach()) {
+        if (turned && d < tune.walk.reach + 0.5 && this.walk.tryAttach()) {
           this.ctx.sound.emit('clamp', sh.x, sh.y, 1);
           this.phase = 'walk';
         } else {
@@ -159,7 +173,7 @@ export class AutoPlug {
             ax *= FLY_ACCEL / a;
             ay *= FLY_ACCEL / a;
           }
-          const m = sh.body.mass();
+          const m = sh.body.mass() + b.body.mass(); // ship and core together
           sh.body.applyImpulse({ x: ax * m * dt, y: ay * m * dt }, true);
           return 0;
         }

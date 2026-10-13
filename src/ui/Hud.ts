@@ -23,6 +23,8 @@ export class Hud {
   private readonly shieldFill: HTMLDivElement;
   private readonly heatFill: HTMLDivElement;
   private readonly heatWrap: HTMLDivElement;
+  private readonly pressFill: HTMLDivElement;
+  private readonly pressText: HTMLElement;
   private readonly stats: HTMLDivElement;
   private readonly tools: HTMLDivElement;
   private readonly banner: HTMLDivElement;
@@ -42,8 +44,13 @@ export class Hud {
     this.healthFill = el('div', 'hud-health-fill', el('div', 'hud-health-bar', health));
     const shield = el('div', 'hud-health hud-shield', this.root, '<span>SHLD</span>');
     this.shieldFill = el('div', 'hud-health-fill', el('div', 'hud-health-bar', shield));
-    this.heatWrap = el('div', 'hud-heat', this.root, '<span>LASER HEAT</span>');
+    this.heatWrap = el('div', 'hud-heat', this.root, '<span>CORE HEAT</span>');
     this.heatFill = el('div', 'hud-heat-fill', el('div', 'hud-heat-bar', this.heatWrap));
+    const press = el('div', 'hud-heat hud-press', this.root, '<span>PRESSURE</span>');
+    const pbar = el('div', 'hud-heat-bar', press);
+    this.pressFill = el('div', 'hud-heat-fill', pbar);
+    el('div', 'hud-press-mark', pbar); // 1 atm
+    this.pressText = el('b', 'hud-press-val', press);
     this.stats = el('div', 'hud-stats', this.root);
     const vel = el('div', 'hud-vel', this.root);
     this.velArrow = el('div', 'hud-vel-arrow', vel);
@@ -55,8 +62,8 @@ export class Hud {
       'hud-help',
       this.root,
       `<b>Mouse</b> aim (the ship turns to face it) · <b>Space</b> thrust · <b>F</b> lamp (sensors see it)<br>
-       <b>V</b> knock: vibration scan of what you touch (walking scans too; what you scan stays mapped, <b>N</b> hides the map) · <b>G</b> use a door / airlock panel · <b>LMB</b> cutter (heats until it burns) · <b>Shift+LMB</b> weld beam (wide and gentle: glowing metal pressed together fuses) · <b>RMB</b> harpoon · click again: let go · hold: winch in (reach a wall and your feet clamp on, the line lets go)<br>
-       <b>E</b> arms: grab debris in reach / let go of it (walking too) · floating with nothing in reach: clamp onto the hull (slow debris the arms just ease aside) · <b>A/D</b> walk · <b>Space</b> push off · <b>Q</b> pay out tether · <b>M</b> mute · 
+ <b>V</b> knock: vibration scan of what you touch (walking scans too; what you scan stays mapped, <b>N</b> hides the map) · <b>G</b> use a door / airlock panel · <b>LMB</b> cutter (heats the red reactor core, as does thrust: overheat and the cutter locks out) · <b>Shift+LMB</b> weld beam (wide and gentle: glowing metal pressed together fuses) · <b>RMB</b> harpoon · click again: let go · hold: winch in (reach a wall and your feet clamp on, the line lets go)<br>
+       <b>E</b> grab: debris in reach goes in the arms (the jets fly it with you; the harpoon lets go), anything bigger or the wall you clamp onto and walk · <b>E</b> again: let go · press a plate flat to a wall and the arms set it for welding · <b>A/D</b> walk · <b>Space</b> push off · <b>Q</b> pay out tether · <b>M</b> mute · 
 <b>P</b> rope pivot COM/nose · <b>Wheel</b> zoom · <b>R</b> restart · <b>H</b> hide help · <b>\`</b> debug panel`,
     );
     this.hint = el('div', 'hud-hint', this.root);
@@ -83,9 +90,9 @@ export class Hud {
         ? 'Salvage extracted'
         : obj.progress > 0
           ? `Hold the core in the zone… ${Math.round(obj.progress * 100)}%`
-          : game.grapple.targetObject === game.salvage
-            ? 'Tow the core to the extraction zone'
-            : 'Cut into the derelict and grapple the reactor core';
+          : game.grapple.targetObject === game.salvage || game.arms.held === game.salvage
+            ? 'Get the core out to the extraction zone (the vault has a hatch to space: G at its panel)'
+            : 'Reach the reactor core in the vault: power dead doors, cut maglock cables, patch leaks';
     this.objective.innerHTML = `${objText}<span class="time">${t.toFixed(1)}s</span>`;
 
     const hp = Math.max(0, game.ship.health / tune.ship.maxHealth);
@@ -93,10 +100,16 @@ export class Hud {
     this.healthFill.style.background = hp > 0.5 ? '#5fe0a8' : hp > 0.25 ? '#ffc04d' : '#ff5a4d';
     this.shieldFill.style.width = `${(game.ship.shield / tune.ship.shieldMax) * 100}%`;
     this.shieldFill.style.background = '#6fd8ff';
-    const cut = game.cutter;
-    this.heatFill.style.width = `${cut.heat * 100}%`;
-    this.heatFill.style.background = cut.overheated ? '#ff5a4d' : cut.heat > 0.7 ? '#ffb24d' : '#ffd88a';
-    this.heatWrap.classList.toggle('overheated', cut.overheated);
+    const re = game.ship.reactor;
+    this.heatFill.style.width = `${Math.min(1, re.level) * 100}%`;
+    this.heatFill.style.background = re.overheated ? '#ff5a4d' : re.level > 0.7 ? '#ff7a3d' : '#e8423a';
+    this.heatWrap.classList.toggle('overheated', re.overheated);
+    // pressure gauge: the bar is full at 1.5 (the tick marks a normal room, 1.0)
+    const pr = Math.max(0, game.pressure);
+    this.pressFill.style.width = `${Math.min(1, pr / 1.5) * 100}%`;
+    this.pressFill.style.background = pr < 0.05 ? '#555' : pr < 0.6 ? '#ffb24d' : '#7fd6ff';
+    const pt = pr < 0.05 ? 'VACUUM' : `${pr.toFixed(2)} atm`;
+    if (this.pressText.textContent !== pt) this.pressText.textContent = pt;
 
     const v = game.ship.body.linvel();
     const speed = Math.hypot(v.x, v.y);

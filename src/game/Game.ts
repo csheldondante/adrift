@@ -32,6 +32,7 @@ import type { Stage } from '../render/Stage';
 import { Arms } from './Arms';
 import { AutoPlug } from './AutoPlug';
 import { Cutter } from './Cutter';
+import { Fitter } from './Fitter';
 import { Grapple } from './Grapple';
 import { Hazards } from './Hazards';
 import { HullWalk } from './HullWalk';
@@ -41,6 +42,7 @@ import { ExtractionObjective } from './Objective';
 import { Machinery } from './Machinery';
 import { Projectiles } from './Projectiles';
 import { Security } from './security/Security';
+import { Reactor } from './Reactor';
 import { Ship } from './Ship';
 import type { Controls, GameContext, Tool } from './types';
 
@@ -68,6 +70,8 @@ export class Game {
   readonly power: PowerNet;
   readonly devices: Devices;
   readonly scanner = new Scanner();
+  /** Air pressure at the ship (gas field units: 1 = a normally pressurized room). */
+  pressure = 0;
   private footPingT = 0;
   private knockT = 0;
   readonly ship: Ship;
@@ -83,6 +87,7 @@ export class Game {
   readonly walk: HullWalk;
   readonly arms: Arms;
   readonly autoPlug: AutoPlug;
+  readonly fitter: Fitter;
   readonly sound: Soundscape;
   /** Contact pairs (collider handles) touching last step, so impacts sound once at onset. */
   private touchingPairs = new Set<string>();
@@ -182,6 +187,7 @@ export class Game {
     this.walk = new HullWalk(this.ctx);
     this.arms = new Arms(this.ctx, this.walk);
     this.autoPlug = new AutoPlug(this.ctx, this.arms, this.walk, this.power);
+    this.fitter = new Fitter(this.ctx, this.arms);
     this.welder.onWeld = (x, y) => {
       for (let k = 0; k < 14; k++) this.particles.spark(x, y, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, 0.3 + Math.random() * 0.4);
       this.sound.emit('weld', x, y, 1, [this.pixels.terrain, this.pixels.bodyAt(x, y) ?? undefined]);
@@ -208,6 +214,8 @@ export class Game {
     };
     // after the events are wired: doors paint their slabs into the terrain
     this.devices = new Devices(this.ctx, this.power, level.devices ?? []);
+    // turrets painted their housings and power packs before the events were wired
+    this.power.terrainChanged({ x0: 0, y0: 0, x1: tg.w, y1: tg.h });
     this.hazards.onExplode = (x, y) => {
       const d = Math.hypot(x - this.ship.x, y - this.ship.y);
       stage.shake(Math.max(0, 0.9 - d / 40));
@@ -359,7 +367,7 @@ export class Game {
   private placeFixedLights(level: LevelSpec): void {
     const rng = new Rng(level.seed ^ 0x5eed);
     for (const r of level.rooms) {
-      if (rng.next() > tune.light.roomLightChance) continue;
+      if (rng.next() > (level.emergencyLights ?? tune.light.roomLightChance)) continue;
       const red = rng.next() < 0.4;
       const size = Math.max(r.x1 - r.x0, r.y1 - r.y0);
       const base = 0.5 + rng.next() * 0.3;
@@ -405,6 +413,9 @@ export class Game {
         out.push({ x: n.x, y: n.y, dirX: ca, dirY: sa, cosHalf: Math.cos(L.lampHalf), range: L.lampRange, intensity: L.lampIntensity, r: 1, g: 0.94, b: 0.82 });
         out.push({ x: sh.x, y: sh.y, dirX: 0, dirY: 0, cosHalf: -2, range: 4.5, intensity: 0.4, r: 0.7, g: 0.8, b: 1 });
       } else out.push({ x: sh.x, y: sh.y, dirX: 0, dirY: 0, cosHalf: -2, range: 2.2, intensity: 0.25, r: 0.5, g: 0.7, b: 1 }); // instrument glow
+      // the reactor glows red through its window, brighter as it heats
+      const rh = Math.min(1, sh.reactor.level);
+      if (rh > 0.05) out.push({ x: sh.x + ca * Reactor.X, y: sh.y + sa * Reactor.X, dirX: 0, dirY: 0, cosHalf: -2, range: 2 + 5 * rh, intensity: 0.25 + 0.9 * rh, r: 1, g: 0.18 + 0.5 * rh * rh, b: 0.1 });
       if (sh.thrustLevel > 0) out.push({ x: sh.x - ca * 1.8, y: sh.y - sa * 1.8, dirX: 0, dirY: 0, cosHalf: -2, range: 9, intensity: 1.1 * sh.thrustLevel, r: 1, g: 0.55, b: 0.2 });
       if (this.cutter.firing) {
         const e = this.cutter.beamEnd;
@@ -448,20 +459,25 @@ export class Game {
     const dt = FIXED_DT;
     // flight assist holds the ship still relative to the air (none in vacuum)
     this.ctx.field.sample(this.ship.x, this.ship.y, sample);
+    this.pressure = sample.gas;
     const air = Math.min(1, sample.gas / 0.5);
     this.ship.refVx = sample.vx * air;
     this.ship.refVy = sample.vy * air;
     this.walk.ignore = this.arms.held;
+    this.grapple.handsFull = !!this.arms.held;
     // carrying a live core to a dead socket: the auto-plug walks and places it (any input of
     // the player's takes over)
     const move = this.autoPlug.fixedUpdate(dt, this.controls.move, this.controls.thrust > 0);
+    // a plate held against a wall: the arms set it flush (then weld the seam)
+    if (this.autoPlug.phase === 'idle') this.fitter.fixedUpdate();
     if (this.walk.attached) {
       this.ship.idleEngines();
       this.walk.fixedUpdate(dt, move);
-    } else this.ship.control(this.controls, dt);
+    } else this.ship.control(this.controls, dt, this.arms.rigidLoad);
     this.stepArms(dt);
     this.updateConspicuity();
     this.ship.updateShield(dt);
+    this.ship.reactor.fixedUpdate(dt);
     this.slots[0].fixedUpdate(dt, input.down('Mouse0'));
     this.slots[1].fixedUpdate(dt, input.down('Mouse2'));
     this.hazards.update(dt);
@@ -501,8 +517,8 @@ export class Game {
   private onGrab(): void {
     const b = this.arms.held!;
     this.autoPlug.unlatch(b); // pulled back out of a socket
-    // the arms take over from the harpoon line if it was on the same body
-    if (this.grapple.targetObject === b) this.grapple.detach();
+    // something in hand: the harpoon line lets go (whatever it was on)
+    this.grapple.detach();
     const c = b.body.worldCom();
     this.sound.emit('grab', c.x, c.y, 1);
   }

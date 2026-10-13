@@ -2,6 +2,45 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-13 — Playtest 3: a lock-and-key dungeon, the ship's reactor, armored walls, simpler grabbing
+
+The user's notes, in order: the game needs a place where restoring power turns the lights on; you could fly round the outside to the core; "a dungeon should be a recursive partition of the space into rooms with keys and doors where keys are anything to help you bypass a door"; a red power core on the ship that glows and overheats with the laser or booster; cameras that need power sources or cuttable lines; grabbed things throw the ship's steering off; the heat ray is overpowered ("lots of things should be shielded", and an airlock is no barrier if you can cut the wall beside it); welding still too hard to patch anything; a pressure gauge; E as the one way to grab the ship or objects; the harpoon letting go when your hands are full.
+
+**Reliquary** (`level/reliquary.ts`, now the default; `?level=lantern` for the old one; `?seed=N`):
+- **Layout.** An armored box, entered only by the dock. The interior is split recursively (BSP), with an armored wall and one doorway per split, so the rooms form a tree. The vault is the deepest room on the skin; its exit hatch to space opens only from a panel inside, so the way back out with the core is a shortcut you earn.
+- **Locks.** They are assigned while growing the reachable set out from the entry, and each key goes in a room that is already reachable, so every seed can be solved.
+  - *Power door*: its motor and the room's socket and lamps share one wall bus. A battery in the socket lights the room and opens its doors; this is the "restore power" place. The first door out of the entry is always one, with the battery in a locker.
+  - *Maglock*: held shut while powered by a security box, through an exposed cable along the wall face with a camera on it. Cut the cable and the door springs open and the camera goes dark.
+  - *Pressure door*: in a skin room with a live pump. Its air leaks out a crack to space that is too narrow to fly through. Patch the crack (a plate in the room) and shut the hatch you came in by (the pump is interlocked to it); the door opens at 0.65 atm.
+- **Wiring is real matter.** Each room's bus is a ring a few cells into its walls, broken at doorways. `NetPainter` refuses any conductor that touches another network's, or any fixture that touches another fixture. When it can't wire a layout, that layout is retried. Two bugs found by tests drove those rules: a cable painted across another doorway, and a pump painted over its own core.
+- **Bodies never start overlapping.** A battery spawned under a plate got crushed and exploded at the first step.
+
+**Reactor** (`game/Reactor.ts`). A red core in the hull window glows from embers to white with heat. The cutter heats it (times the material's load), and so does thrust (times the square root of the carry boost); it sheds heat all the time. Overheated, the cutter locks out and the engine runs at 35% until it cools to half. The cutter's own heat meter is gone; the HUD shows CORE HEAT. Capacity is a tunable, for upgrades.
+
+**Cutting.** Measured as seconds to bore through 2 m with the trigger held:
+- Before: plate 0.3, hull ~1.
+- Now: plate 1.4, hull 3.3, and armor well over 40.
+
+Armor first proved effectively uncuttable under the reactor's duty cycle: bursts never got it to its old white-hot burn point. So armor now reaches its burn point readily (0.8) and is slow to chew instead (800 hp a cell). Progress then adds up across bursts, which keeps it a soft limit. The user dislikes hard walls. Frame and pressure-door slabs moved the same way. Interior walls and the skin are armor, so doors are the cheap way through.
+
+**Cameras run on power.** Turret housings conduct; a turret is dead while nothing live reaches it. Levels can wire one (`wired`); otherwise it carries a power pack on the wall beside it, joined by a short exposed cable.
+
+**Grabbing.** E grabs debris in reach that is lighter than 3x the ship; anything heavier (or the wall) the feet clamp onto. Grabbing frees the harpoon line, and the harpoon won't fire with full hands. With a rigidly held load, the flight computer flies ship and load as one body: thrust and braking go through the joint center of mass, and turning uses the joint inertia, with the jets' reserve up to 2.5x. In the test a 251 kg crate turns 90 degrees in 0.82 s (0.55 s bare).
+
+**Welding: fit, then weld** (`game/Fitter.ts`). Push a plate (long side at least 2.5x short) flat against a wall and the arms take it over. They turn it to lie along the wall, press it flush and slide it along as the ship moves. Then the weld beam on the seam fuses it, and the arms let go. It finds the wall with rays out of the plate's face along its length, so the hole right in front doesn't hide the wall around it. This replaces the proposed fit mode: it needs no extra mode or keys.
+
+**Pressure gauge.** Air at the ship, with a tick at 1 atm.
+
+**Fixes the end-to-end tests turned up:**
+- *Steering dithered at a half turn.* At exactly 180 degrees the error flipped sign every step, so the ship sat still. It now keeps turning the way it is already spinning.
+- *Flying a held load strained the hold.* Turning torque applied to the ship alone made the pair shudder against the joint. Impulses are now shared out between ship and load as one rigid motion.
+- *Auto-plug wedged the core.* Flying in nose-first with the core held in front jammed it between the ship and the wall, so the feet could never clamp. It now turns so the core is on the far side, and hangs back until turned.
+- *Lamps too dim.* Powered lamps are brighter and reach farther.
+
+The first lock (`?autotest=firstlock`) plugs in about 4 s, opens the door and lights the room on seeds 1-4. One earlier run in six failed to plug: flaky, to watch.
+
+**Verified** (Reliquary seed 3, `?autotest=patch`): the plate held, fitted in 0.5 s, welded in ~4.4 s, the arms freed, the hatch shut, and the pressure door opened 13 s later. Left unpatched with the hatch shut, the room sits at 0.07 atm and the door stays shut. `keys` on seeds 1-4: every power door and maglock starts shut, cameras live, one exit hatch.
+
 ## 2026-10-13 — Cores explode; auto-plug; the harpoon tows batteries whole
 
 The user asked for three things: "Make power cores explode when ruptured. Make it so if I grab and fly a power core to a receptacle the ship automatically grabs the surface and maneuvers and plugs the core in. Make it so the harpoon gun doesn't destroy the core when I spear the outside to pull it."

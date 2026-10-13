@@ -8,6 +8,8 @@ import * as THREE from 'three/webgpu';
 import { CELL, tune } from '../config';
 import { SHIP_GROUPS, type Body, type Collider, type PhysOwner, type Physics } from '../physics/Physics';
 import { ORDER } from '../render/order';
+import type { PixelBody } from '../pixel/PixelBody';
+import { Reactor } from './Reactor';
 import type { Controls } from './types';
 
 // The probe: a round deep-sea-style hull (see the concept art in IDEAS), drawn procedurally
@@ -83,6 +85,8 @@ export class Ship implements PhysOwner {
   private readonly flame: THREE.Mesh;
   private readonly bubble: THREE.Mesh;
   private readonly bubbleMat: THREE.MeshBasicMaterial;
+  /** The red core that powers the cutter and the engine (and overheats). */
+  readonly reactor = new Reactor();
   health = tune.ship.maxHealth;
   shield = tune.ship.shieldMax;
   /** 0..1 visual pulse of the shield bubble (hits, recharge complete). */
@@ -94,6 +98,10 @@ export class Ship implements PhysOwner {
   brakeDirX = 0;
   brakeDirY = 0;
   turnInput = 0;
+  /** (ship + held load) / ship mass this step: 1 flying bare. */
+  load = 1;
+  /** Main engine force this step (N), for the reactor heat. */
+  thrustForce = 0;
   /**
    * Velocity the flight assist holds the ship at when idle: zero in vacuum, the local air's
    * velocity in atmosphere (set by the game each step from the gas field). So a transit tube
@@ -155,7 +163,7 @@ export class Ship implements PhysOwner {
     this.bubbleMat.blending = THREE.AdditiveBlending;
     this.bubble = new THREE.Mesh(new THREE.RingGeometry(1.5, 1.8, 40), this.bubbleMat);
     this.bubble.renderOrder = ORDER.glow;
-    this.group.add(sprite, this.flame);
+    this.group.add(sprite, this.flame, this.reactor.mesh);
     this.group.add(this.bubble);
   }
 
@@ -177,38 +185,83 @@ export class Ship implements PhysOwner {
     return out;
   }
 
-  control(c: Controls, dt: number): void {
+  /**
+   * `load`: a body the arms hold rigidly. The flight computer flies ship and load as one: thrust
+   * and braking act through their joint center of mass with the jets' reserve (up to
+   * ship.carryAssist times their normal force), and turning uses their joint inertia, so a
+   * light load flies like the bare ship and a heavy one is sluggish rather than unsteerable.
+   * Each impulse is shared out between the two bodies as a rigid motion of the pair (the arms
+   * carry the load's share), so the hold isn't strained; all of it on the ship alone made the
+   * pair shudder against the joint instead of turning.
+   */
+  control(c: Controls, dt: number, load: PixelBody | null = null): void {
     if (!this.alive) return;
     const s = tune.ship;
     const a = this.body.rotation();
-    const f = Math.max(0, c.thrust) * s.thrust;
+    const ms = this.body.mass();
+    const p = this.body.translation();
+    const sv = this.body.linvel();
+    const w = this.body.angvel();
+    // the combined body: mass, center of mass, velocity there, inertia about it
+    let mt = ms;
+    let cx = p.x;
+    let cy = p.y;
+    let I = this.body.principalInertia();
+    if (load) {
+      const ml = load.body.mass();
+      const lc = load.body.worldCom();
+      mt = ms + ml;
+      cx = (p.x * ms + lc.x * ml) / mt;
+      cy = (p.y * ms + lc.y * ml) / mt;
+      I += ms * ((p.x - cx) ** 2 + (p.y - cy) ** 2) + load.body.principalInertia() + ml * ((lc.x - cx) ** 2 + (lc.y - cy) ** 2);
+    }
+    const boost = Math.min(mt / ms, s.carryAssist);
+    this.load = mt / ms;
+    const vx = sv.x - w * (cy - p.y);
+    const vy = sv.y + w * (cx - p.x);
+    // a linear impulse (jx, jy) and a spin change dw for the pair, shared out by mass/inertia
+    const push = (jx: number, jy: number, dw: number) => {
+      this.body.applyImpulse({ x: (jx * ms) / mt - dw * ms * (p.y - cy), y: (jy * ms) / mt + dw * ms * (p.x - cx) }, true);
+      if (dw) this.body.applyTorqueImpulse(dw * this.body.principalInertia(), true);
+      if (!load) return;
+      const ml = load.body.mass();
+      const lc = load.body.worldCom();
+      load.body.applyImpulse({ x: (jx * ml) / mt - dw * ml * (lc.y - cy), y: (jy * ml) / mt + dw * ml * (lc.x - cx) }, true);
+      if (dw) load.body.applyTorqueImpulse(dw * load.body.principalInertia(), true);
+    };
+    const f = Math.max(0, c.thrust) * s.thrust * boost * this.reactor.thrustScale;
     this.thrustLevel = c.thrust;
-    if (f !== 0) this.body.applyImpulse({ x: Math.cos(a) * f * dt, y: Math.sin(a) * f * dt }, true);
+    this.thrustForce = f;
+    // the engine runs off the reactor: a long burn heats it (more with a load in the arms)
+    if (c.thrust > 0) this.reactor.load(tune.reactor.thrustHeat * c.thrust * Math.sqrt(boost) * dt);
+    if (f !== 0) push(Math.cos(a) * f * dt, Math.sin(a) * f * dt, 0);
     // Flight assist: when not thrusting, RCS jets push against drift (relative to the air
     // around the ship, see refVx) with a bounded force. It's a real force on the ship (towed
     // loads slow far less), shown as jet puffs.
     this.brake = 0;
     if (c.thrust === 0 && s.flightAssist && s.brakeForce > 0) {
-      const lv = this.body.linvel();
-      const v = { x: lv.x - this.refVx, y: lv.y - this.refVy };
-      const speed = Math.hypot(v.x, v.y);
+      const ux = vx - this.refVx;
+      const uy = vy - this.refVy;
+      const speed = Math.hypot(ux, uy);
       if (speed > 0.03) {
-        const j = Math.min(s.brakeForce * dt, this.body.mass() * speed);
-        this.body.applyImpulse({ x: (-v.x / speed) * j, y: (-v.y / speed) * j }, true);
-        this.brake = j / (s.brakeForce * dt);
-        this.brakeDirX = v.x / speed;
-        this.brakeDirY = v.y / speed;
+        const j = Math.min(s.brakeForce * boost * dt, mt * speed);
+        push((-ux / speed) * j, (-uy / speed) * j, 0);
+        this.brake = j / (s.brakeForce * boost * dt);
+        this.brakeDirX = ux / speed;
+        this.brakeDirY = uy / speed;
       }
     }
     // Aim steering: the ship always turns to face the aim point. Desired spin is the fastest
     // rate that can still brake to zero by the target angle (√(2·accel·err)), capped by
     // turnRate, with a linear tail near zero so it settles without chatter. Applied through
     // bounded torque, so impacts and loads still knock the ship around and it recovers.
-    const p = this.body.translation();
+    const turnAccel = (s.turnAccel * this.body.principalInertia() * boost) / I;
     const dx = c.aimX - p.x;
     const dy = c.aimY - p.y;
-    if (dx * dx + dy * dy > 1.5 * 1.5) this.steerTo(Math.atan2(dy, dx), dt);
-    else this.steerByError(null, dt);
+    if (dx * dx + dy * dy > 1.5 * 1.5) {
+      const want = Math.atan2(dy, dx);
+      push(0, 0, this.steerByError(Math.atan2(Math.sin(want - a), Math.cos(want - a)), dt, turnAccel, false));
+    } else push(0, 0, this.steerByError(null, dt, turnAccel, false));
   }
 
   /** Turns toward a world angle with the stopping-aware rate controller (also used by hull-walking). */
@@ -220,21 +273,28 @@ export class Ship implements PhysOwner {
   /** Not thrusting or braking (e.g. while the feet hold a surface). */
   idleEngines(): void {
     this.thrustLevel = 0;
+    this.thrustForce = 0;
     this.brake = 0;
   }
 
-  private steerByError(err: number | null, dt: number): void {
+  /** The spin change toward `err` this step; applied to the ship unless `apply` is false. */
+  private steerByError(err: number | null, dt: number, accel = tune.ship.turnAccel, apply = true): number {
     const s = tune.ship;
     let wantW = 0;
+    // near a half turn either way round will do: keep going the way it's already spinning
+    // (else the error flips sign each step and it dithers in place)
+    const w = this.body.angvel();
+    if (err !== null && Math.abs(err) > Math.PI - 0.3 && Math.abs(w) > 0.02 && Math.sign(w) !== Math.sign(err)) err -= Math.sign(err) * Math.PI * 2;
     if (err !== null) {
-      const mag = Math.min(s.turnRate, Math.sqrt(2 * s.turnAccel * Math.abs(err)) * 0.85, Math.abs(err) * 14);
+      const mag = Math.min(s.turnRate, Math.sqrt(2 * accel * Math.abs(err)) * 0.85, Math.abs(err) * 14);
       wantW = Math.sign(err) * mag;
     }
-    const maxDw = s.turnAccel * dt;
+    const maxDw = accel * dt;
     const dw = Math.max(-maxDw, Math.min(maxDw, wantW - this.body.angvel()));
-    if (dw !== 0) this.body.applyTorqueImpulse(dw * this.body.principalInertia(), true);
+    if (apply && dw !== 0) this.body.applyTorqueImpulse(dw * this.body.principalInertia(), true);
     // RCS turning puffs only for real steering effort, not settling
     this.turnInput = Math.abs(dw) > maxDw * 0.3 ? Math.sign(dw) : 0;
+    return dw;
   }
 
   /** What finished the ship off (for the death banner and tests). */
@@ -279,6 +339,7 @@ export class Ship implements PhysOwner {
     const thrust = Math.max(0, this.thrustLevel);
     this.flame.visible = this.alive && thrust > 0;
     this.flame.scale.set(0.6 + thrust * 0.9 + Math.sin(time * 60) * 0.12, 1 + Math.sin(time * 37) * 0.15, 1);
+    this.reactor.sync(time);
     this.shieldFlash *= 0.9;
     this.bubbleMat.opacity = this.shieldFlash * 0.8;
     this.bubble.visible = this.shieldFlash > 0.02;

@@ -254,6 +254,25 @@ canvas {
   height: 100%;
   width: 0;
 }
+.hud-press {
+  bottom: 82px;
+}
+.hud-press .hud-heat-bar {
+  position: relative;
+}
+.hud-press-mark {
+  position: absolute;
+  left: 66.6%;
+  top: -3px;
+  width: 1px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.6);
+}
+.hud-press-val {
+  font-weight: normal;
+  min-width: 64px;
+  color: var(--hud-dim);
+}
 .hud-heat.overheated span {
   color: #ff5a4d;
   animation: blink 0.5s steps(2) infinite;

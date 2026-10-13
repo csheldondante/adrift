@@ -75,7 +75,7 @@ export class Security {
         const pb = ctx.pixels.addBody(grid, { x: at.x - (grid.w * CELL) / 2, y: at.y - (grid.h * CELL) / 2, tags: { label: 'securityBot' } });
         this.robots.push(new SecurityBot(this, pb, patrol));
       } else if (e.type === 'turret') {
-        this.turrets.push(new Turret(this, e.x, e.y, e.dir));
+        this.turrets.push(new Turret(this, e.x, e.y, e.dir, !!e.wired));
       } else if (e.type === 'drone') {
         const at = this.freeSpot(e.x, e.y, BOT_CLEARANCE);
         this.spawnDrone(at.x, at.y, e.angle);

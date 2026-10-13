@@ -42,8 +42,9 @@ export function hintFor(game: Game): string {
       : 'Live power core in tow';
   }
   const held = game.arms.held;
+  if (game.fitter.fitting) return 'Plate set on the wall: <b>Shift + LMB</b> along its seam until it glows and fuses (pull away to take it back)';
   if (held && held.alive && !held.tags.salvage && !isRobot(held))
-    return 'Holding a piece: press it where it goes, then <b>Shift + LMB</b> on the seam (the weld beam) until it glows and fuses';
+    return 'Holding a piece: push a plate flat against the wall over the hole and the arms set it, then <b>Shift + LMB</b> the seam to weld it';
   if (deadNear) return 'Dead power socket: it needs a <b>power core</b> (a battery from a locker, or a drone\'s core: harpoon near it and winch)';
 
   for (const r of robots) {
@@ -52,10 +53,15 @@ export function hintFor(game: Game): string {
     if (near(c.x, c.y, x, y, 9)) return 'Wrecked robot, core still live: harpoon <b>near the red core</b> and winch to tear it out';
   }
   for (const d of game.devices.doors) {
-    if (d.spec.type !== 'pressureDoor' || d.open) continue;
+    if (d.open || d.t > 0) continue;
     const s = d.spec;
-    if (near(((s.x0 + s.x1) / 2) * CELL, ((s.y0 + s.y1) / 2) * CELL, x, y, 10))
-      return 'Pressure door: opens when the room behind it holds air. Seal its breach (lay a plate over it, <b>Shift + LMB</b> the seam to weld it) and power its pump';
+    if (!near(((s.x0 + s.x1) / 2) * CELL, ((s.y0 + s.y1) / 2) * CELL, x, y, 10)) continue;
+    if (s.type === 'pressureDoor')
+      return 'Pressure door: opens once this room holds air. Find where it leaks (a crack to space), hold a plate over it and weld the seam (<b>Shift + LMB</b>), and shut the hatch you came in by (<b>G</b> at its panel)';
+    if (s.type === 'door' && s.invert) return 'Maglock: held shut while it has power. Follow its cable along the wall and cut it (the camera on that line goes dark too), or blow its security box';
+    if (s.type === 'door') return "Dead door: it opens when its line has power. Find this room's <b>blue socket</b> and plug a battery in (lights come on too)";
   }
+  for (const t of game.security.turrets)
+    if (t.alive && t.live && near(t.x, t.y, x, y, 14)) return 'Camera: it runs on its cable. Cut the cable or its power pack and it goes dark';
   return '';
 }

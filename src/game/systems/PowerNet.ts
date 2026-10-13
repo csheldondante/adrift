@@ -214,7 +214,7 @@ export class PowerNet {
     }
     this.lights.length = 0;
     for (const b of buckets.values())
-      this.lights.push({ x: (b.x / b.n) * CELL, y: (b.y / b.n) * CELL, dirX: 0, dirY: -1, cosHalf: -2, range: 9 + Math.min(10, b.n * 0.4), intensity: 0.85, r: 1, g: 0.86, b: 0.62, skin: 0.6 });
+      this.lights.push({ x: (b.x / b.n) * CELL, y: (b.y / b.n) * CELL, dirX: 0, dirY: -1, cosHalf: -2, range: 16 + Math.min(16, b.n * 0.5), intensity: 1.6, r: 1, g: 0.86, b: 0.62, skin: 0.6 });
   }
 }
 

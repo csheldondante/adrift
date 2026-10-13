@@ -24,6 +24,7 @@ export const tune = {
     density: 90, // kg/m² (round 2.3 × 1.9 m hull, ~306 kg)
     flightAssist: true, // RCS jets brake drift when not thrusting (visible as side puffs)
     brakeForce: 700, // N of braking from the RCS jets (≈2.3 m/s² unloaded)
+    carryAssist: 2.5, // carrying: thrust, braking and turning scale with the load up to this many times (lighter loads fly like the bare ship)
     maxHealth: 100,
     shieldMax: 60, // recharging shield that soaks damage before the hull
     shieldRegen: 20, // shield per second once recharging
@@ -33,6 +34,15 @@ export const tune = {
     impactDamagePerSpeed: 6, // hp per m/s above the safe speed (12 m/s crash ≈ 50 hp, ~20 m/s is fatal)
     heatDamage: 25, // hp/s at heat 1
     crushForce: 400000, // N contact force from a machine that counts as being crushed (instant death)
+  },
+  reactor: {
+    capacity: 1, // heat it holds before overheating (an upgrade later)
+    laserHeat: 0.2, // per second of cutting at full power (times the material's load: armor and girders 2.5x)
+    thrustHeat: 0.2, // per second of full thrust (times √ of the carry boost)
+    cool: 0.13, // shed per second, always
+    overheatCool: 0.35, // shed per second while overheated (venting)
+    recover: 0.5, // overheated: the cutter comes back once heat falls to this fraction
+    limpThrust: 0.35, // engine power while overheated
   },
   grapple: {
     maxLength: 26, // m harpoon range / rope on the spool
@@ -64,14 +74,11 @@ export const tune = {
   },
   cutter: {
     radius: 0.35, // m (kerf ≈ 0.7 m: narrow enough to pick out a robot's parts)
-    damagePerSecond: 650, // hp/s at beam center, once a cell is past its burn point
+    damagePerSecond: 300, // hp/s at beam center, once a cell is past its burn point
     range: 200, // m (effectively unlimited; the raycast stops at the first solid pixel)
     heat: 0.9, // gas-field heat injected per second
-    glowRate: 6, // heat energy per second at the beam center (hull: 1 heat ≈ bright orange; burns above 0.5)
+    glowRate: 4, // heat energy per second at the beam center (hull: 1 heat ≈ bright orange; burns above 0.5)
     push: 600, // N pushed onto a loose body the beam is hitting (radiation pressure, tuned for fun)
-    heatPerSecond: 0.22, // laser heat gained while firing (≈4.5 s from cold to overheat)
-    coolPerSecond: 0.45, // laser heat lost while not firing
-    overheatCoolPerSecond: 0.4, // when overheated: locked out until it has cooled all the way down
     weldSpread: 3, // Shift: the beam defocused this many times wider...
     weldPower: 0.12, // ...at this fraction of the power (heat, damage, push, laser load)
   },

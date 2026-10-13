@@ -29,12 +29,19 @@ export interface DoorSpec {
  * points are meters. Doors slide along their long axis.
  */
 export type DeviceSpec =
-  /** Opens while its motor cell (a conducting cell wired into the network) is powered. */
-  | { type: 'door'; x0: number; y0: number; x1: number; y1: number; motor: P; mat: number }
+  /**
+   * Opens while its motor cell (a conducting cell wired into the network) is powered. With
+   * `invert` it's a maglock instead: held shut while powered, it springs open when its power
+   * is cut.
+   */
+  | { type: 'door'; x0: number; y0: number; x1: number; y1: number; motor: P; mat: number; invert?: boolean }
   /** Opens while the gas at `sensor` (meters) is at least `open`; closes below `close`. */
   | { type: 'pressureDoor'; x0: number; y0: number; x1: number; y1: number; sensor: P; open: number; close: number }
-  /** Pours air in at `outlet` (meters) while its pump cell is powered, up to `target` gas. */
-  | { type: 'pump'; cell: P; outlet: P; rate: number; target: number }
+  /**
+   * Pours air in at `outlet` (meters) while its pump cell is powered, up to `target` gas. With
+   * `interlock` (a door's rect), only while that door is shut.
+   */
+  | { type: 'pump'; cell: P; outlet: P; rate: number; target: number; interlock?: Rect4 }
   /**
    * A door you open and shut yourself (G at its panel cell), while the panel is powered.
    * It moves while its motor cell is powered (wire it in; defaults to the panel).
@@ -68,7 +75,12 @@ export type Rect4 = [number, number, number, number];
 /** Things systems spawn at load (meters). Consumed by machinery/security systems as they land. */
 export type EntitySpec =
   | { type: 'securityBot'; x: number; y: number; patrol: P[]; roomId: number }
-  | { type: 'turret'; x: number; y: number; dir: number; roomId: number }
+  /**
+   * A sentry camera/turret on a wall. It works only while its housing is powered: `wired`
+   * means the level ran a line to it (x, y is on that line); otherwise it gets its own power
+   * pack on the wall beside it, joined by a short exposed cable.
+   */
+  | { type: 'turret'; x: number; y: number; dir: number; roomId: number; wired?: boolean }
   | { type: 'droneBay'; x: number; y: number; roomId: number }
   /** An attack drone already in place (idle until an alarm). */
   | { type: 'drone'; x: number; y: number; angle: number }
@@ -102,4 +114,13 @@ export interface LevelSpec {
   doors: DoorSpec[];
   entities: EntitySpec[];
   devices?: DeviceSpec[];
+  /** Fraction of rooms with a flickering emergency lamp (default tune.light.roomLightChance). */
+  emergencyLights?: number;
+  /** A generated lock-and-key layout (tests, debugging). */
+  locks?: {
+    doors: { id: number; type: string; parent: number; child: number; x: number; y: number }[];
+    stash: { room: number; what: string; locker: boolean }[];
+    entry: number;
+    vault: number;
+  };
 }

@@ -1,8 +1,10 @@
 // Ship systems built into the walls, brought to life from level DeviceSpecs:
-//   - door: a slab that slides open while its motor cell is powered (and shut when it isn't)
+//   - door: a slab that slides open while its motor cell is powered (and shut when it isn't);
+//     a maglock (invert) is the reverse: held shut while powered, open once its line is cut
 //   - pressureDoor: a slab of the toughest cuttable material that opens while the chamber
 //     at its sensor holds air, and shuts when it loses it (hysteresis between the two)
-//   - pump: pours air in at its outlet while its pump cell is powered, up to a target
+//   - pump: pours air in at its outlet while its pump cell is powered, up to a target (and,
+//     interlocked to a door, only while that door is shut)
 //   - hatch: a door you open and shut yourself (G at its panel) while the panel is powered
 //   - airlock: two interlocked doors around a chamber, plus a vent valve. Using a panel
 //     cycles it: shut the open door, vent the chamber (going out) or pump it up (going in)
@@ -100,6 +102,12 @@ export class Devices {
     return door;
   }
 
+  /** Is the door with this rect fully shut? */
+  private shut(r: Rect4): boolean {
+    const d = this.doors.find((q) => q.spec.x0 === r[0] && q.spec.y0 === r[1] && q.spec.x1 === r[2] && q.spec.y1 === r[3]);
+    return !d || d.t === 0;
+  }
+
   /** The panel within reach of (x, y) meters, nearest first, or null. */
   panelNear(x: number, y: number): { cell: P; door?: Door; lock?: Airlock; powered: boolean } | null {
     let best: (typeof this.panels)[number] | null = null;
@@ -135,6 +143,7 @@ export class Devices {
     this.pumping = 0;
     for (const p of this.pumps) {
       if (!this.power.powered(p.cell.x, p.cell.y)) continue;
+      if (p.interlock && !this.shut(p.interlock)) continue; // won't pump into an open door
       field.sample(p.outlet.x, p.outlet.y, s);
       if (s.gas >= p.target) continue;
       this.pumping++;
@@ -144,7 +153,7 @@ export class Devices {
     for (const l of this.airlocks) this.cycle(l, dt);
     for (const d of this.doors) {
       const sp = d.spec;
-      if (sp.type === 'door') d.open = this.power.powered(sp.motor.x, sp.motor.y);
+      if (sp.type === 'door') d.open = this.power.powered(sp.motor.x, sp.motor.y) !== !!sp.invert;
       else if (sp.type === 'pressureDoor') {
         field.sample(sp.sensor.x, sp.sensor.y, s);
         if (s.gas >= sp.open) d.open = true;

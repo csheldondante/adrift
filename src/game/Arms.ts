@@ -104,6 +104,11 @@ export class Arms {
     }
   }
 
+  /** The held body while it's locked rigidly to the ship (not while being placed): the jets fly it too. */
+  get rigidLoad(): PixelBody | null {
+    return this.joint ? this.held : null;
+  }
+
   private get reach(): number {
     return tune.arms.upper + tune.arms.fore;
   }
@@ -274,8 +279,10 @@ export class Arms {
   private nearby(): PixelBody[] {
     const sh = this.ctx.ship;
     const out: { b: PixelBody; d: number }[] = [];
+    // anything heavy enough to stand on is walked on (E clamps the feet onto it), not carried
+    const maxMass = sh.body.mass() * tune.grapple.standMassRatio;
     for (const b of this.ctx.pixels.bodies) {
-      if (!b.alive || b.tags.machine || b.body.mass() < tune.arms.minMass) continue;
+      if (!b.alive || b.tags.machine || b.body.mass() < tune.arms.minMass || b.body.mass() >= maxMass) continue;
       b.boundingCircle(circ);
       const d = Math.hypot(circ.x - sh.x, circ.y - sh.y) - circ.r;
       if (d <= this.reach + 1.5) out.push({ b, d });

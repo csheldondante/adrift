@@ -11,6 +11,20 @@ Built decisions and their rationale live in `docs/DECISIONS.md`. This file is fo
 
 ---
 
+## Playtest 3 notes (user, 2026-10-13, evening)
+
+- **A place where restoring power turns the lights on in a section.** Status: *built*: in Reliquary every power-door room's lamps are on the same wall bus as its socket. Still an *idea*: multi-room power sections, and a main breaker that lights a whole wing.
+- **You could fly round the outside to the core and skip the dungeon.** Status: *built*: Reliquary is an armored box; only the dock lets you in, and the vault's exit hatch opens only from inside.
+- **The dungeon should be a recursive partition into rooms, with keys and doors** (a key is anything that gets you past an obstacle; an airlock that lets drones out is a key). Status: *built* as Reliquary (BSP rooms, one doorway per wall, power doors, maglocks, a patch-and-pump pressure lock, keys placed in rooms you can already reach). Still an *idea*: airlocks and drone bays as locks, multi-room sections, loot by depth, loops.
+- **Red power core on the ship that glows and overheats with the laser or the booster** (upgradeable later). Status: *built* (`Reactor`). Still an *idea*: upgrades (capacity, cooling, a heat sink).
+- **Cameras need power sources or lines you can cut.** Status: *built*.
+- **Grabbed things throw your mass off; steering is annoying.** Status: *built*: the jets fly a held load with the ship (thrust, braking and turning by the combined mass, with up to 2.5x reserve).
+- **The heat ray is OP; lots of things should be armored; an airlock is no barrier if you can cut the wall beside it.** Status: *built*: armored walls and skin; armor heats to burn readily but takes ~800 hp a cell, and the reactor limits bursts. Still an *idea*: tune once played; make door slabs a little tougher than the walls around them.
+- **Welding still too hard to patch anything.** Status: *built*: press a plate flat to a wall and the arms set it flush (`Fitter`); then weld the seam. This replaces the proposed fit mode below.
+- **Pressure gauge in the UI.** Status: *built*.
+- **E is how you grab onto the ship or objects; the only difference is that smaller things you can steer with your jet.** Status: *built*: E grabs debris in reach (lighter than 3x the ship) or else clamps onto the surface (or anything heavier).
+- **The harpoon should let go when you have something in your hands.** Status: *built*: grabbing frees the line; it won't fire while the arms are full.
+
 ## Playtest 2 notes (user, 2026-10-13)
 
 - **Unclear what power cores are for.** Status: *built* (2026-10-13): context hints, blue beacons on dead sockets, a "power restored" notice. See DECISIONS.
@@ -19,7 +33,7 @@ Built decisions and their rationale live in `docs/DECISIONS.md`. This file is fo
 - **Airlocks:** doors you can open and close, double doors that keep pressure in, and systems that re-pressurize once a seal is made. Status: *built* (2026-10-13): hatches and airlocks (G at a panel), life-support pumps that refill a sealed room, and Lantern's crew section. Still an *idea*: unpowered manual cranks, and sensors that hear an airlock cycle.
 - **Controls are janky:** the grapple should let go once you're on a surface; E should grab debris; otherwise the arms should ease slow debris round the ship. Status: *built* (2026-10-13). See DECISIONS.
 - **Power cores explode when ruptured; auto-plug a carried core into a socket; the harpoon shouldn't destroy a battery it spears.** Status: *built* (2026-10-13). See DECISIONS.
-- **Fit mode for welding** (proposed 2026-10-13, not yet approved): holding a piece, Shift makes the ship hold station and the mouse move the piece (arms push, wheel rotates, it settles flush to walls), and LMB traces the weld along the seam. Status: *idea*.
+- **Fit mode for welding** (proposed 2026-10-13, not yet approved): holding a piece, Shift makes the ship hold station and the mouse move the piece (arms push, wheel rotates, it settles flush to walls), and LMB traces the weld along the seam. Status: *dropped* for the automatic fit (press a plate to a wall; playtest 3), which needs no mode.
 - **Welding didn't work in play.** Status: *fixed* (2026-10-13): weld heat set relative to burn point, a cooling-floor bug fixed, and the Shift weld beam added. Still an *idea*: a seam glow cue (cells at welding heat drawn distinctly), so you can see when to press.
 - **Schematics stay once mapped, and show wires from power to doors.** Status: *built* (2026-10-13): a persistent scan map, redrawn live, that N toggles. Door and valve motors are now wired cells in the network. Still an *idea*: a minimap drawn from the same mapped bits, and showing the panel-to-door control link (not only power).
 
