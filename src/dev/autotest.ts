@@ -6,6 +6,7 @@ import type { Input } from '../core/Input';
 import type { Game } from '../game/Game';
 import { M } from '../pixel/materials';
 import { LAB } from '../game/level/lab';
+import { LANTERN } from '../game/level/lantern';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const m = (c: number) => c * CELL;
@@ -509,6 +510,92 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         log('bots', g.security.robots.map((r) => [r.alive ? 1 : 0, r.cause, r.pb.alive ? 1 : 0, r.sees ? 1 : 0, +r.thrust.toFixed(2)]));
         await sleep(500);
       }
+    }
+    if (md === 'lantern') {
+      // the hand-built level's systems, step by step (?level=lantern)
+      const g = game();
+      const L = LANTERN;
+      const px = g.pixels;
+      const s = { gas: 0, heat: 0, vx: 0, vy: 0 };
+      const gasAt = (cx: number, cy: number) => (g.ctx.field.sample(m(cx), m(cy), s), +s.gas.toFixed(2));
+      const settle = (b: (typeof px.bodies)[number], x: number, y: number) => {
+        b.body.setTranslation({ x, y }, true);
+        b.body.setRotation(0, true);
+        b.body.setLinvel({ x: 0, y: 0 }, true);
+        b.body.setAngvel(0, true);
+      };
+      const robots = g.security.robots.map((r) => [r.constructor.name, r.alive ? 1 : 0, r.sees ? 1 : 0]);
+      log('lantern-spawn', { robots, hangarGas: gasAt(1160, 740), bodies: px.bodies.length });
+      // 1) power: battery into the hall socket; patch over the breach (hall side), weld it
+      const battery = px.bodies.find((b) => b.grid.w === 24 && b.grid.h === 12)!;
+      const patch = px.bodies.find((b) => b.grid.w === 10 && b.grid.h === 34)!;
+      place(m(1990), m(1260), 0);
+      const bx = m(L.socket.x - 24 - 0.4);
+      const by = m(L.socket.y - 6);
+      const pxw = m(L.breach[0] - 10) - 0.03;
+      const pyw = m((L.breach[1] + L.breach[3]) / 2 - 17);
+      const welds0 = g.welder.welds;
+      for (let k = 0; k < 80 && g.welder.welds === welds0; k++) {
+        settle(battery, bx, by);
+        if (patch.alive) settle(patch, pxw, pyw);
+        px.heatCircle(m(L.breach[0]), m((L.breach[1] + L.breach[3]) / 2), 1.8, 0.5);
+        await sleep(16);
+      }
+      const powered = { live: g.power.live, pumping: g.devices.pumping, welded: g.welder.welds > welds0 };
+      const door = g.devices.doors[0];
+      const t0 = performance.now();
+      let openMs = -1;
+      const trace: number[][] = [];
+      let nt = 0;
+      while (performance.now() - t0 < 25000) {
+        settle(battery, bx, by);
+        if (performance.now() - t0 > nt) {
+          nt += 2500;
+          trace.push([Math.round((performance.now() - t0) / 1000), gasAt(2200, 1320), gasAt(2300, 1320), gasAt(2484, 1000), +door.t.toFixed(2)]);
+        }
+        if (door.t >= 1 && openMs < 0) openMs = Math.round(performance.now() - t0);
+        if (openMs > 0 && performance.now() - t0 > openMs + 4000) break;
+        await sleep(16);
+      }
+      log('lantern-power', { ...powered, openMs, doorT: +door.t.toFixed(2), trace });
+      // 2) the tube: drop the ship in the station and let the air carry it
+      place(m(2300), m(1320), 0);
+      const p0 = { x: g.ship.x, y: g.ship.y };
+      let maxV = 0;
+      const t1 = performance.now();
+      let arrivedMs = -1;
+      while (performance.now() - t1 < 15000) {
+        settle(battery, bx, by);
+        const v = g.ship.body.linvel();
+        maxV = Math.max(maxV, Math.hypot(v.x, v.y));
+        if (g.ship.y < m(L.vault[3]) && arrivedMs < 0) {
+          arrivedMs = Math.round(performance.now() - t1);
+          break;
+        }
+        await sleep(16);
+      }
+      log('lantern-tube', { arrivedMs, maxSpeed: +maxV.toFixed(1), at: [+g.ship.x.toFixed(1), +g.ship.y.toFixed(1)], moved: +Math.hypot(g.ship.x - p0.x, g.ship.y - p0.y).toFixed(1), hp: Math.round(g.ship.health), cause: g.ship.deathCause });
+      // 3) vent the hangar: cut its floor door from below (outside); drones go out
+      const inHangar = () => g.security.robots.filter((r) => r.pb.alive && r.pos.y > m(L.hangar[1]) && r.pos.y < m(L.hangar[3]) && r.pos.x > m(L.hangar[0]) && r.pos.x < m(L.hangar[2])).length;
+      const before = inHangar();
+      // cut the hangar door free: a slit through each end of the slab, from outside
+      const bodies0 = px.bodies.length;
+      for (const cx of [1064, 1256]) {
+        g.cutter.heat = 0;
+        await hold('Mouse0', 2600, () => {
+          place(m(cx), m(470), Math.PI / 2);
+          aim(m(cx), m(530));
+        });
+      }
+      // watch from off to one side, just below the hangar (gas forces act within the camera's band)
+      place(m(880), m(470), 0);
+      const slab = px.bodies.find((b) => b.grid.w > 150 && b.grid.h < 24);
+      await sleep(3000);
+      log('lantern-vent', { dronesInHangarBefore: before, after: inHangar(), hangarGas: gasAt(1160, 740), doorCutFree: !!slab, newBodies: px.bodies.length - bodies0 });
+      g.zoom = 90;
+      g.debugCamera = { x: m(1160), y: m(560) };
+      await sleep(300);
+      await shot('lantern-vent');
     }
     if (md === 'lab') {
       // the systems loop on ?level=lab: plug the battery in (lights + pump), see the breach

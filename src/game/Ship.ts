@@ -69,6 +69,13 @@ export class Ship implements PhysOwner {
   brakeDirX = 0;
   brakeDirY = 0;
   turnInput = 0;
+  /**
+   * Velocity the flight assist holds the ship at when idle: zero in vacuum, the local air's
+   * velocity in atmosphere (set by the game each step from the gas field). So a transit tube
+   * carries you, and a decompression takes you with it unless you're anchored.
+   */
+  refVx = 0;
+  refVy = 0;
   alive = true;
   /** Headlamp on (F). You need it to see; sensors can see it too. */
   lampOn = true;
@@ -146,11 +153,13 @@ export class Ship implements PhysOwner {
     const f = Math.max(0, c.thrust) * s.thrust;
     this.thrustLevel = c.thrust;
     if (f !== 0) this.body.applyImpulse({ x: Math.cos(a) * f * dt, y: Math.sin(a) * f * dt }, true);
-    // Flight assist: when not thrusting, RCS jets push against drift with a bounded force.
-    // It's a real force on the ship (towed loads slow far less), shown as jet puffs.
+    // Flight assist: when not thrusting, RCS jets push against drift (relative to the air
+    // around the ship, see refVx) with a bounded force. It's a real force on the ship (towed
+    // loads slow far less), shown as jet puffs.
     this.brake = 0;
     if (c.thrust === 0 && s.flightAssist && s.brakeForce > 0) {
-      const v = this.body.linvel();
+      const lv = this.body.linvel();
+      const v = { x: lv.x - this.refVx, y: lv.y - this.refVy };
       const speed = Math.hypot(v.x, v.y);
       if (speed > 0.03) {
         const j = Math.min(s.brakeForce * dt, this.body.mass() * speed);

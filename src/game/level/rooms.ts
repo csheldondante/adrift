@@ -137,7 +137,8 @@ export function crusherRoom(c: RoomCtx): void {
       h: m(ph),
       dx: 0,
       dy: m(fromTop ? -travel : travel),
-      period: rng.range(2.2, 3.6),
+      period: 6,
+      phase: i / n,
     });
   }
   ceilingLights(c);

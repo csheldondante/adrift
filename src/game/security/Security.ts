@@ -66,6 +66,9 @@ export class Security {
         this.robots.push(new SecurityBot(this, pb, patrol));
       } else if (e.type === 'turret') {
         this.turrets.push(new Turret(this, e.x, e.y, e.dir));
+      } else if (e.type === 'drone') {
+        const at = this.freeSpot(e.x, e.y, BOT_CLEARANCE);
+        this.spawnDrone(at.x, at.y, e.angle);
       } else if (e.type === 'droneBay') {
         this.bays.push({ x: e.x, y: e.y, launched: 0, next: 0 });
       }

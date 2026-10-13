@@ -41,7 +41,10 @@ export type EntitySpec =
   | { type: 'securityBot'; x: number; y: number; patrol: P[]; roomId: number }
   | { type: 'turret'; x: number; y: number; dir: number; roomId: number }
   | { type: 'droneBay'; x: number; y: number; roomId: number }
-  | { type: 'crusher'; x: number; y: number; w: number; h: number; dx: number; dy: number; period: number }
+  /** An attack drone already in place (idle until an alarm). */
+  | { type: 'drone'; x: number; y: number; angle: number }
+  /** phase 0..1 offsets the cycle (staggered rams read as a wave you can time). */
+  | { type: 'crusher'; x: number; y: number; w: number; h: number; dx: number; dy: number; period: number; phase?: number }
   | { type: 'mover'; path: P[]; w: number; h: number; speed: number };
 
 export interface RoomInfo {

@@ -409,6 +409,11 @@ export class Game {
 
   private fixedStep(input: Input): void {
     const dt = FIXED_DT;
+    // flight assist holds the ship still relative to the air (none in vacuum)
+    this.ctx.field.sample(this.ship.x, this.ship.y, sample);
+    const air = Math.min(1, sample.gas / 0.5);
+    this.ship.refVx = sample.vx * air;
+    this.ship.refVy = sample.vy * air;
     if (this.walk.attached) {
       this.ship.idleEngines();
       this.walk.fixedUpdate(dt, this.controls.move);

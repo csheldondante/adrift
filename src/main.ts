@@ -15,6 +15,7 @@ import { Game } from './game/Game';
 import { buildDerelict } from './game/level/derelict';
 import { buildDungeon } from './game/level/dungeon';
 import { buildLab } from './game/level/lab';
+import { buildLantern } from './game/level/lantern';
 import { Hud } from './ui/Hud';
 import { createDebugPanel } from './ui/DebugPanel';
 import { Minimap } from './ui/Minimap';
@@ -44,13 +45,18 @@ async function boot(): Promise<void> {
   const audio = new AudioEngine();
   const app = { stage, field, input, lighting, audio };
 
-  // ?level=classic for the original small derelict (autotests default to it), ?level=lab for
-  // the systems test station (power, pressure, welding), else a
-  // generated dungeon; ?seed=N pins the generator, otherwise each run gets a new ship
+  // The hand-built "Lantern" derelict by default. ?level=classic for the original small
+  // derelict (autotests default to it), ?level=lab for the systems test station (power,
+  // pressure, welding), ?level=dungeon for the generator (?seed=N pins it)
   const params = new URLSearchParams(location.search);
-  const levelName = params.get('level') ?? (params.has('autotest') ? 'classic' : 'dungeon');
+  const levelName = params.get('level') ?? (params.has('autotest') ? 'classic' : 'lantern');
   const seedParam = params.get('seed');
-  const buildLevel = () => (levelName === 'classic' ? buildDerelict() : levelName === 'lab' ? buildLab() : buildDungeon(seedParam ? Number(seedParam) : undefined));
+  const buildLevel = () => {
+    if (levelName === 'classic') return buildDerelict();
+    if (levelName === 'lab') return buildLab();
+    if (levelName === 'dungeon') return buildDungeon(seedParam ? Number(seedParam) : undefined);
+    return buildLantern();
+  };
   // level specs aren't kept around: their world-sized grids are only needed to build a run
   const first = buildLevel();
   (window as unknown as { __level: { center: { x: number; y: number } } }).__level = { center: first.center };

@@ -145,7 +145,7 @@ export function buildDungeon(seed = (Math.random() * 2 ** 31) >>> 0): LevelSpec 
     ...Array(4).fill('security'),
     ...Array(3).fill('fuel'),
     ...Array(3).fill('crew'),
-    ...Array(3).fill('crusher'),
+    'crusher',
     ...Array(2).fill('droneBay'),
     ...Array(4).fill('machinery'),
   ] as RoomKind[]);

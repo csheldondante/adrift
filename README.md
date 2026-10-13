@@ -15,14 +15,18 @@ npm run smoke -- <outDir> "autotest=all"   # headless Chrome run with scripted s
 
 ## Levels & URL parameters
 
-- Default: a **generated derelict**. It's about 512 × 256 m, with 30–36 rooms off a spine from the prow entry to the vault at the far end. Every run is a new ship.
-- `?seed=N`: pin the generator to a specific ship.
+- Default: **"Lantern"**, a hand-built derelict.
+  - Dark spines with hard corners for the harpoon, patrolled by security bots.
+  - A pressurized hangar of drones that you can vent by cutting its door free.
+  - A power-and-pressure puzzle: patch a breach, plug in a battery or a stolen drone core, and the pressure door opens.
+  - A pneumatic tube that carries you down to the vault.
+- `?level=dungeon`: the generated derelict, about 512 × 256 m with 30–36 rooms. `?seed=N` pins the generator.
 - `?level=classic`: the original small derelict. Autotests use it by default.
 - `?level=lab`: a small station that teaches the systems loop. Weld a patch over the chamber's roof breach. Push the battery into the wall socket to power the lights and the air pump. Once the chamber holds air, its pressure door opens to the vault and the core.
 - `?group.key=value`: override a tunable, e.g. `?grapple.hookSpeed=90`.
 - `?autotest=all|hook|clamp|glow|overview|soak|…`: scripted scenarios for `npm run smoke`.
 
-Security: bots patrol rooms with visible vision cones. Stay out of a cone, or break line of sight before the WATCHED meter fills. An alarm seals nearby bulkheads (cut through them, or cut their edges and yank the slab out), wakes turrets, and launches drones from their bays. Destroy a robot by breaking its red eye.
+Security: bots patrol rooms with visible vision cones. Stay out of a cone, or break line of sight before the WATCHED meter fills. An alarm seals nearby bulkheads (cut through them, or cut their edges and yank the slab out), wakes turrets, and launches drones from their bays. Robots run on a red power core wired to their eyes, thrusters and weapons. Their fronts are armored. Drill the core from behind, or cut a conduit to blind, strand or disarm one.
 
 The top-left minimap reveals the ship as you explore. It always shows you (white), the core (cyan) and the extraction zone (green).
 

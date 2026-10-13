@@ -17,6 +17,7 @@
 // Likely growth: more archetypes (shield bots, welders that repair bulkheads), stun from the
 // cutter, hacking. Shared movement/sensing lives in Robot so archetypes stay small.
 
+import type { FieldSample } from '../../fields/GasField';
 import { M } from '../../pixel/materials';
 import type { PixelBody } from '../../pixel/PixelBody';
 import { PixelGrid } from '../../pixel/PixelGrid';
@@ -27,6 +28,7 @@ import type { Light } from '../../render/Lighting';
 import type { Security } from './Security';
 
 const tmp = { x: 0, y: 0 };
+const air: FieldSample = { gas: 0, heat: 0, vx: 0, vy: 0 };
 
 /** Builds a grid from rows of art, top row first (grid y is up). Unknown chars are empty. */
 export function gridFromArt(rows: string[], legend: Record<string, number>): PixelGrid {
@@ -156,9 +158,19 @@ export abstract class Robot {
     return this.pb.body.worldCom();
   }
 
-  /** Flies toward a desired velocity with bounded acceleration (thrusters, not teleporting). */
+  /**
+   * Flies toward a desired velocity with bounded acceleration (thrusters, not teleporting).
+   * Velocities are relative to the air around the robot, like the ship's flight assist: in a
+   * decompression "holding still" means going with the wind, so venting a room takes its
+   * robots with it.
+   */
   protected steer(vx: number, vy: number, accel: number, dt: number): void {
     const b = this.pb.body;
+    const c = this.pos;
+    this.sec.ctx.field.sample(c.x, c.y, air);
+    const k = Math.min(1, air.gas / 0.5);
+    vx += air.vx * k;
+    vy += air.vy * k;
     const v = b.linvel();
     let ax = (vx - v.x) / dt;
     let ay = (vy - v.y) / dt;

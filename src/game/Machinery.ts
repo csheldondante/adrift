@@ -48,8 +48,8 @@ function machineGrid(wm: number, hm: number, stripe: 'top' | 'bottom' | 'ends'):
 function slam(phase: number): number {
   const p = phase - Math.floor(phase);
   if (p < 0.45) return 0;
-  if (p < 0.53) {
-    const u = (p - 0.45) / 0.08;
+  if (p < 0.58) {
+    const u = (p - 0.45) / 0.13;
     return u * u;
   }
   if (p < 0.68) return 1;
@@ -87,7 +87,7 @@ export class Machinery {
   private addCrusher(e: CrusherSpec, fx: THREE.Group): void {
     const down = e.dy < 0 || e.dx < 0;
     const grid = machineGrid(e.w, e.h, e.dy !== 0 ? (down ? 'bottom' : 'top') : 'ends');
-    const phase0 = Math.random();
+    const phase0 = e.phase ?? Math.random();
     const center = (t: number): P => {
       const k = slam(t / e.period + phase0);
       return { x: e.x + e.dx * k, y: e.y + e.dy * k };

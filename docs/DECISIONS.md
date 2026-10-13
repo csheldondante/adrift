@@ -2,6 +2,40 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-12 — "Lantern": a hand-built level around the tools (milestone D)
+
+Playtest asks:
+- The grapple never got long corridors or corners.
+- There should be places where it makes sense to vent a room deliberately: grapple in, then blow the enemies out.
+- Pressurized transit tubes that push the probe.
+- The mashers were too random, too fast and too deadly.
+
+**Decision:** a hand-built derelict, `level/lantern.ts`, is now the default level. The generator stays available as `?level=dungeon`. Lantern has:
+- **Two long dark spines** (75 m and 70 m) joined by a 45 m shaft, with hard 90° corners for harpoon swings. Each spine has a security bot walking its length. Spine A has dark alcoves in its ceiling to hide in while the bot passes.
+- **A pressurized hangar** under spine A, behind a glass window. You can watch its four idle drones safely, because sensors don't see through glass while light does. Its floor is a 2 m plate hangar door.
+  - Cut both ends of the door and the slab blows out.
+  - Measured: the hangar empties (gas 1 → 0.22 in 3 s) and 3 of the 4 drones go out with it.
+- **The power-and-pressure puzzle** from the lab, at full size:
+  - A dock locker holds a battery; you can also cut a drone's core free and use that.
+  - A hall socket, a breached chamber, a pump, lamps, and a pressure door. Measured: the door opens 7.3 s after the patch is welded.
+- **A transit tube.** Behind the pressure door, the network also runs a station pump. The air flows down a 60 m drop into the vault, then out through exhaust slots to space. Measured: the ship rides it 67 m to the vault in 11 s, peaking at about 20 m/s, without damage.
+- **The core** sits in the vault. Extraction is outside the slots.
+
+**Supporting changes:**
+- **Flight assist is air-relative.** Ship assist and robot steering hold velocity relative to the local air, weighted by density, instead of relative to the world.
+  - In vacuum nothing changes.
+  - In a tube current the assist no longer fights the ride. Before, its 700 N brake beat the air's push of about 65 N per m/s, so the ship sat still (0.1 m/s).
+  - In a decompression, idle robots go with the wind, which is what makes venting a room clear it. Before, the drones' 4 m/s² station-keeping held against a 3 m/s² gust.
+  - The ship gets carried too, unless you're anchored with the harpoon. That's the intended drama.
+- **New `drone` entity** for drones placed in the level (idle until an alarm). Spawns go through `freeSpot`.
+- **Dungeon crushers** are slower and rhythmic: a 6 s period, a 0.8 s slam, phases staggered across a room. There is now one crusher room in the generator's pool instead of three.
+
+**Known limits:**
+- Gas forces only act inside the camera's vertical band (view ± 25 m) because of readback bandwidth. A vent you aren't looking at won't move things. The test watches from just below the hangar.
+- The hull is a very large solid mass. Cutting a shortcut through it is possible but slow, which is the soft constraint.
+
+**Revisit if:** the tube is too fast (20 m/s), or the pressure door's hysteresis (open at ≥ 0.6, close below 0.3) traps players when the station leaks.
+
 ## 2026-10-12 — Power and pressure in the walls; the lab station (milestone C)
 
 Playtest asks:
