@@ -511,6 +511,35 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         await sleep(500);
       }
     }
+    if (md === 'scan') {
+      // knock on the hall wall next to the chamber (?level=lantern): the pulse should find the
+      // wiring buried in it, the breach's cavity, and the chamber beyond
+      const g = game();
+      g.ship.lampOn = false;
+      place(m(2036), m(1300), 0);
+      aim(m(2060), m(1300));
+      await sleep(150);
+      input.simulateDown('KeyE');
+      await sleep(40);
+      input.simulateUp('KeyE');
+      await sleep(600);
+      input.simulateDown('KeyV');
+      await sleep(40);
+      input.simulateUp('KeyV');
+      await sleep(30);
+      const knocked = g.scanner.history.find((h) => h.strength === 1) ?? { reached: 0, features: 0 };
+      g.ship.lampOn = true;
+      g.debugCamera = { x: m(2070), y: m(1300) };
+      g.zoom = 22;
+      await sleep(250);
+      await shot('scan');
+      g.debugCamera = null;
+      log('scan', { attached: g.walk.attached, sent: g.scanner.sent, knockReached: knocked.reached, knockFeatures: knocked.features });
+      // walking sends small pulses
+      const s0 = g.scanner.sent;
+      await hold('KeyD', 1500);
+      log('scan-walk', { pulses: g.scanner.sent - s0 });
+    }
     if (md === 'lantern') {
       // the hand-built level's systems, step by step (?level=lantern)
       const g = game();

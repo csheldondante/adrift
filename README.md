@@ -37,6 +37,7 @@ The top-left minimap reveals the ship as you explore. It always shows you (white
 | Mouse | Aim: the ship always turns to face the cursor |
 | Space | Thrust forward |
 | F | Headlamp on/off (you need it to see; sensors can see it too) |
+| V | Knock on whatever you're touching or standing on. A vibration pulse spreads through the matter and briefly shows what's inside it: power cores, conduits, sockets, pumps, tough material, and hidden cavities. Walking on a hull sends small pulses too |
 | Left mouse (hold) | Cutter laser. It heats what it hits; a material gives way past its burn point (armor and girders only at white heat, and they work the laser harder). Hot metal pressed together welds: push a plate into a breach and heat the seam. Pushes loose things; overheating locks it until cool |
 | Right mouse | Fire harpoon; click again to let go; hold to winch in (clamps on contact) |
 | (drift slowly into debris) | The four arms catch it: carry it as a shield or ram |

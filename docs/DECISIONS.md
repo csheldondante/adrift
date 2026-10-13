@@ -2,6 +2,29 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-12 — Vibration scan (milestone E)
+
+Playtest: "the one downside of the darkness right now is it is hard to tell what is and isn't cuttable". The suggested fix was to let walking on a surface scan it with vibrations and find the hidden innards.
+
+**Decision:** a `Scanner` sends pulses through solid matter.
+- **Triggers:**
+  - Footfalls while hull-walking send small pulses: 5 m, at most one every 0.45 s.
+  - **V** knocks on whatever you're standing on or within arm's reach of: 16 m, with a 0.8 s cooldown, and it makes a clunk.
+- **How a pulse travels:** breadth-first from the contact cell through solid cells only, up to the radius. Distance is path length through the matter, so like conducted sound it doesn't jump gaps.
+- **What it lights up:**
+  - Systems: cores red, conduits orange, sockets blue, pumps green, fixtures yellow, fuel orange-red.
+  - Tough material (burn point 0.85 or more) as a dim violet fill, so you can see what will cost the laser.
+  - Every surface it reached as a cyan outline. That outlines hidden cavities and rooms behind walls.
+- **Display:** the ring expands at 45 m/s, brightest at its front, then fades over 4.5 s. The overlay is drawn additively after the darkness pass, so it reads with the lamp off. It is parented to the scanned object's view, so a scan of a moving body rides along with it.
+
+Measured in Lantern's hall: a knock reaches 4,105 cells and reveals 409 system cells. These are the socket riser, the hall fixture, the floor conduit to the pump, and the breach cavity.
+
+**Why through matter, not a radius:** it's the same rule as conducted sound, and it rewards touching the ship, which is the hull-walking fantasy. It also tells you what is connected to what, which is exactly what you need when tracing power.
+
+**Revisit if:**
+- Scans are too free. They're silent to sensors for now, and an obvious next step is to let sensors hear knocks.
+- The edge outline is too noisy in dense areas.
+
 ## 2026-10-12 — "Lantern": a hand-built level around the tools (milestone D)
 
 Playtest asks:

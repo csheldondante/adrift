@@ -17,7 +17,9 @@ import { Physics, type Body } from '../physics/Physics';
 import { MAT_RGB } from '../pixel/materials';
 import type { PixelBody } from '../pixel/PixelBody';
 import { PixelWorld } from '../pixel/PixelWorld';
+import type { PixelObject } from '../pixel/PixelObject';
 import { Welder } from '../pixel/Welder';
+import { Scanner } from './Scanner';
 import { Devices } from './systems/Devices';
 import { PowerNet } from './systems/PowerNet';
 import { rasterPixels, type InteriorMask } from '../pixel/lightRaster';
@@ -63,6 +65,9 @@ export class Game {
   readonly welder: Welder;
   readonly power: PowerNet;
   readonly devices: Devices;
+  readonly scanner = new Scanner();
+  private footPingT = 0;
+  private knockT = 0;
   readonly ship: Ship;
   readonly particles = new Particles();
   readonly hazards = new Hazards();
@@ -235,6 +240,8 @@ export class Game {
     if (input.hit('Mouse2')) this.slots[1].press();
     if (input.released('Mouse0')) this.slots[0].release();
     if (input.released('Mouse2')) this.slots[1].release();
+    this.knockT -= dt;
+    if (input.hit('KeyV')) this.knock();
     if (input.hit('KeyF')) {
       sh.lampOn = !sh.lampOn;
       this.sound.emit('lamp', sh.x, sh.y, 1);
@@ -260,6 +267,7 @@ export class Game {
     this.pixels.syncVisuals();
     this.ship.sync(this.time);
     this.arms.frameUpdate(dt, this.time);
+    this.scanner.frameUpdate(dt);
     for (const t of this.slots) t.frameUpdate(dt);
     this.machinery.frameUpdate();
     this.security.frameUpdate();
@@ -453,7 +461,44 @@ export class Game {
       this.sound.emit('grab', c.x, c.y, 1);
     }
     for (const l of arms.landed) this.sound.emit('foot', l.x, l.y, l.e);
+    // footfalls on a hull send small vibration pulses (see Scanner)
+    this.footPingT -= dt;
+    if (this.walk.attached && arms.landed.length && this.footPingT <= 0) {
+      const l = arms.landed[0];
+      this.scanner.ping(this.walk.surfaceBody ?? this.pixels.terrain, l.x, l.y, 5, 0.45);
+      this.footPingT = 0.45;
+    }
     arms.landed.length = 0;
+  }
+
+  /** V: knock on whatever the ship is touching (or standing on) and scan it. */
+  private knock(): void {
+    if (this.knockT > 0 || !this.ship.alive) return;
+    const sh = this.ship;
+    let obj: PixelObject | null = this.walk.attached ? (this.walk.surfaceBody ?? this.pixels.terrain) : null;
+    let hx = sh.x;
+    let hy = sh.y;
+    if (obj) {
+      hx = sh.x - this.walk.nx * this.walk.gap;
+      hy = sh.y - this.walk.ny * this.walk.gap;
+    } else {
+      // nearest matter within arm's reach
+      let best = 2.8;
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        const hit = this.pixels.raycast(sh.x, sh.y, Math.cos(a), Math.sin(a), best);
+        if (hit) {
+          best = hit.dist;
+          obj = hit.target;
+          hx = hit.x;
+          hy = hit.y;
+        }
+      }
+    }
+    if (!obj) return;
+    this.knockT = 0.8;
+    this.scanner.ping(obj, hx, hy, 16, 1);
+    this.sound.emit('clunk', hx, hy, 0.5);
   }
 
   /** Gas flow drags bodies toward its velocity, scaled by density and exposed area. */
@@ -668,6 +713,7 @@ export class Game {
   dispose(): void {
     for (const t of this.slots) t.dispose();
     this.arms.dispose();
+    this.scanner.dispose();
     this.app.audio.quiet();
     this.machinery.dispose();
     this.security.dispose();
