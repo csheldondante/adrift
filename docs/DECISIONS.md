@@ -2,6 +2,12 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-13 — Never step time backwards
+
+**Bug:** the first animation frame's timestamp can come before the `performance.now()` that `main.ts` takes at init, so the first `dt` was negative (about −0.7 s). The extraction objective's decay, `progress − dt·2`, then *added* 1.4. The default level could count as "Salvage extracted" on its first frame; headless runs hit it about 3 times in 4.
+
+**Fix:** the frame loop clamps `dt` at 0. Clamping at the source is better than guarding each system, because any rate-based system could misbehave on a negative step.
+
 ## 2026-10-13 — Hatches, airlocks and life support
 
 Playtest ask: "there also need to be airlocks, doors that I can open and close and double sets to keep pressure in (or systems to recreate pressure once a seal has been established)".

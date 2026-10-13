@@ -82,7 +82,8 @@ async function boot(): Promise<void> {
   let fpsAcc = 0;
   let fpsFrames = 0;
   const frame = (now: number) => {
-    const dt = (now - last) / 1000;
+    // the first frame's timestamp can predate `last` (taken at init): never step backwards
+    const dt = Math.max(0, (now - last) / 1000);
     last = now;
     if (input.hit('KeyR')) restart();
     game.update(dt);
