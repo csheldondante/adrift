@@ -29,7 +29,7 @@ npm run smoke -- <outDir> "autotest=all"   # headless Chrome run with scripted s
 - `?group.key=value`: override a tunable, e.g. `?grapple.hookSpeed=90`.
 - `?autotest=all|hook|clamp|glow|overview|soak|…`: scripted scenarios for `npm run smoke`.
 
-Security: bots patrol rooms with visible vision cones. Stay out of a cone, or break line of sight before the WATCHED meter fills. An alarm seals nearby bulkheads (cut through them, or cut their edges and yank the slab out), wakes turrets, and launches drones from their bays. Bots come and look at junk that moves oddly (carried, towed or pushed) and circle it, so cover only works if you move round it too. Robots run on a red power core wired to their eyes, thrusters and weapons. Their fronts are armored. Drill the core from behind, or cut a conduit to blind, strand or disarm one.
+Security: bots patrol rooms with visible vision cones. Stay out of a cone, or break line of sight before the WATCHED meter fills. An alarm seals nearby bulkheads (cut through them, or cut their edges and yank the slab out), wakes turrets, and launches drones from their bays. Bots come and look at junk that moves oddly (carried, towed or pushed) and circle it, so cover only works if you move round it too. Robots run on a red power core wired to their eyes, thrusters and weapons. Their fronts are armored. Power cores explode when ruptured (cut, blasted, crushed), so drill one from behind from a distance, or cut a conduit to blind, strand or disarm one.
 
 The top-left minimap reveals the ship as you explore. It always shows you (white), the core (cyan) and the extraction zone (green).
 
@@ -46,6 +46,7 @@ The top-left minimap reveals the ship as you explore. It always shows you (white
 | Left mouse (hold) | Cutter laser. It heats what it hits; a material gives way past its burn point (armor and girders only at white heat, and they work the laser harder). Pushes loose things; overheating locks it until cool |
 | Shift + left mouse | Weld beam: the cutter defocused, wide and at low power. Glowing metal pressed together fuses, so lay a plate over a breach (or hold it there with the arms) and run the weld beam along the seam. Held too long, it still cuts |
 | Right mouse | Fire harpoon; click again to let go; hold to winch in. Winched up against a wall (or a machine, or anything much heavier than you) your feet clamp on and the line lets go by itself; lighter debris stays on a short line for the arms to grab. A harpoon that bites next to a robot's red core hooks the core: winch and it tears out, still live, for a wall socket |
+| (carry a live core near a dead socket) | Auto-plug: the ship clamps onto the socket's wall, walks beside it, turns the core so a terminal faces the socket and presses it in; the socket latches it. Any move key takes over |
 | (slow debris drifting in) | The arms ease it aside so it slides round the ship (fast junk still hits) |
 | E | The arms: grab the nearest debris in reach (carry it as a shield or ram), or let go of it (it keeps its momentum). Works while walking too: two arms hold, two walk. Floating with nothing to grab, E clamps onto the hull; then **A / D** walk along it on the arms and **Space** pushes off. The camera rolls so the hull is down. |
 | Q | Pay out tether slack (hold RMB to winch in) |

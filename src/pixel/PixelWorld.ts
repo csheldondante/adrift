@@ -341,7 +341,7 @@ export class PixelWorld {
       vx = v.x;
       vy = v.y;
     }
-    if (MAT_FLAGS[mat] & F.EXPLOSIVE) this.events.explosiveDestroyed?.(tmp2.x, tmp2.y);
+    if (MAT_FLAGS[mat] & (F.EXPLOSIVE | F.RUPTURES)) this.events.explosiveDestroyed?.(tmp2.x, tmp2.y);
     this.events.cellDestroyed?.(tmp2.x, tmp2.y, mat, shade, vx, vy);
   }
 

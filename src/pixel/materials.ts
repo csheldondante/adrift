@@ -41,6 +41,7 @@ export const F = {
   EXPLOSIVE: 4,
   EMISSIVE: 8, // glows while powered (POWER itself always glows)
   CONDUCTS: 16, // part of a power network (see pixel/power.ts)
+  RUPTURES: 32, // explodes when destroyed (cut, blasted, crushed), but heat alone doesn't set it off
 } as const;
 
 interface MaterialDef {
@@ -74,7 +75,7 @@ const DEFS: MaterialDef[] = [
   { id: M.EYE, name: 'eye', color: [255, 196, 90], variation: 0.08, hp: 10, armor: 1, density: 30, flags: F.SOLID | F.EMISSIVE | F.CONDUCTS, burn: 0.3, spark: 0.5 },
   { id: M.BULKHEAD, name: 'bulkhead', color: [150, 132, 70], variation: 0.08, hp: 160, armor: 1, density: 90, flags: F.SOLID, burn: 0.85, heatCap: 1.6, cool: 0.22, spark: 2, load: 1.8 },
   { id: M.TURRET, name: 'turret', color: [70, 76, 92], variation: 0.1, hp: 70, armor: 1, density: 80, flags: F.SOLID, burn: 0.55, spark: 1.2 },
-  { id: M.POWER, name: 'power core', color: [235, 30, 42], variation: 0.1, hp: 30, armor: 1, density: 70, flags: F.SOLID | F.EMISSIVE | F.CONDUCTS, burn: 0.35, spark: 0.6 },
+  { id: M.POWER, name: 'power core', color: [235, 30, 42], variation: 0.1, hp: 30, armor: 1, density: 70, flags: F.SOLID | F.EMISSIVE | F.CONDUCTS | F.RUPTURES, burn: 0.35, spark: 0.6 },
   { id: M.CONDUIT, name: 'conduit', color: [196, 112, 52], variation: 0.08, hp: 18, armor: 1, density: 60, flags: F.SOLID | F.CONDUCTS, burn: 0.3, spark: 1.5 },
   { id: M.THRUSTER, name: 'thruster', color: [74, 92, 132], variation: 0.08, hp: 45, armor: 1, density: 70, flags: F.SOLID | F.CONDUCTS, burn: 0.45, spark: 1.2 },
   { id: M.WEAPON, name: 'weapon', color: [150, 64, 170], variation: 0.08, hp: 45, armor: 1, density: 70, flags: F.SOLID | F.CONDUCTS, burn: 0.45, spark: 1.2 },

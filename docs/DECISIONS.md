@@ -2,6 +2,29 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-13 — Cores explode; auto-plug; the harpoon tows batteries whole
+
+The user asked for three things: "Make power cores explode when ruptured. Make it so if I grab and fly a power core to a receptacle the ship automatically grabs the surface and maneuvers and plugs the core in. Make it so the harpoon gun doesn't destroy the core when I spear the outside to pull it."
+
+**Ruptured cores explode.** A new material flag, `RUPTURES`, means a cell explodes when it is destroyed (cut, blasted, crushed, shed) but not from heat. Power cores have it. Fuel (`EXPLOSIVE`) also cooks off in a hot gas field, but cores shouldn't go off just because you cut near one. Consequences:
+- Drilling a robot's core from behind now blows the robot apart, not merely kills it. In the organs test the cause changed from "core" to "destroyed".
+- The blast hurts the ship within about 7 m.
+- The crew section's wall core and the batteries explode if cut.
+This follows from the request and from the physics-damage rule: no exemptions.
+
+**The harpoon no longer guts batteries.** It never damaged cells itself. Spearing a battery near its core triggered the robot core-rip, which tears a channel through the housing and pulls the core out, so the battery came apart. The rip now applies only to robots and wrecks (labels `securityBot`, `drone`, `wreck`). A battery speared on its casing is towed whole (84 of 84 core cells kept).
+
+**Auto-plug** (`game/AutoPlug.ts`) is an assist on top of the real systems:
+- **Trigger:** the arms hold a live core within 8 m of a dead socket.
+- **Fly:** if no surface is underfoot, the thrusters ease the ship toward a stance beside the socket until the feet can clamp onto its wall.
+- **Walk:** the feet walk to that stance.
+- **Insert:** the arms swap the rigid hold for a force- and torque-limited spring-damper (`Arms.guide`). They turn the core so a terminal faces the socket and press it onto the face. A terminal is a live conductor sticking out of the core: a body's outermost cells on that side. Without that check it picked the side of the battery's copper strip and turned the battery 90° the wrong way.
+- **Latch:** the socket goes live, its latch grips the core (a fixed joint to the wall), and the arms let go.
+
+Plugging still depends on physical contact, as checked by PowerNet; the latch is new and keeps a plugged core from drifting off. Any input of the player's (A/D, thrust, E) takes over, and that socket is left alone until the core changes or the ship moves 14 m away. Grabbing a latched core with E unlatches it.
+
+**Verified:** in Lantern's hall, starting mid-hall with the dock battery in the arms, the ship flew in, clamped on, walked, placed the battery and latched it in 5.2 s. The socket went live and the power-restored notice showed. The lantern, lab, airlock, rip and organs tests pass.
+
 ## 2026-10-13 — Less janky controls: the line lets go on arrival, E grabs, arms fend
 
 Playtest: "When I grapple and attach to a surface my grapple should disengage automatically not hold me there. I think E to grab debris otherwise arms should just move slow moving debris around the ship."

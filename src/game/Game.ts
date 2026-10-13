@@ -30,6 +30,7 @@ import { Particles } from '../render/Particles';
 import { PixelLayer } from '../render/PixelLayer';
 import type { Stage } from '../render/Stage';
 import { Arms } from './Arms';
+import { AutoPlug } from './AutoPlug';
 import { Cutter } from './Cutter';
 import { Grapple } from './Grapple';
 import { Hazards } from './Hazards';
@@ -81,6 +82,7 @@ export class Game {
   readonly controls: Controls = { thrust: 0, reel: 0, move: 0, aimX: 0, aimY: 0, weld: false };
   readonly walk: HullWalk;
   readonly arms: Arms;
+  readonly autoPlug: AutoPlug;
   readonly sound: Soundscape;
   /** Contact pairs (collider handles) touching last step, so impacts sound once at onset. */
   private touchingPairs = new Set<string>();
@@ -179,6 +181,7 @@ export class Game {
     this.slots = [this.cutter, this.grapple];
     this.walk = new HullWalk(this.ctx);
     this.arms = new Arms(this.ctx, this.walk);
+    this.autoPlug = new AutoPlug(this.ctx, this.arms, this.walk, this.power);
     this.welder.onWeld = (x, y) => {
       for (let k = 0; k < 14; k++) this.particles.spark(x, y, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, 0.3 + Math.random() * 0.4);
       this.sound.emit('weld', x, y, 1, [this.pixels.terrain, this.pixels.bodyAt(x, y) ?? undefined]);
@@ -198,6 +201,7 @@ export class Game {
         this.power.terrainChanged(r);
       },
       bodyRemoved: (b) => {
+        this.autoPlug.unlatch(b);
         this.grapple.onBodyRemoved(b);
         this.arms.onBodyRemoved(b);
       },
@@ -448,9 +452,12 @@ export class Game {
     this.ship.refVx = sample.vx * air;
     this.ship.refVy = sample.vy * air;
     this.walk.ignore = this.arms.held;
+    // carrying a live core to a dead socket: the auto-plug walks and places it (any input of
+    // the player's takes over)
+    const move = this.autoPlug.fixedUpdate(dt, this.controls.move, this.controls.thrust > 0);
     if (this.walk.attached) {
       this.ship.idleEngines();
-      this.walk.fixedUpdate(dt, this.controls.move);
+      this.walk.fixedUpdate(dt, move);
     } else this.ship.control(this.controls, dt);
     this.stepArms(dt);
     this.updateConspicuity();
@@ -493,6 +500,7 @@ export class Game {
   /** The arms just caught something (E). */
   private onGrab(): void {
     const b = this.arms.held!;
+    this.autoPlug.unlatch(b); // pulled back out of a socket
     // the arms take over from the harpoon line if it was on the same body
     if (this.grapple.targetObject === b) this.grapple.detach();
     const c = b.body.worldCom();

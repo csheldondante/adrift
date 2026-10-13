@@ -133,6 +133,10 @@ export const tune = {
     fendStiffness: 6, // 1/s² per m inside the standoff (times the reduced mass)
     fendDamping: 3, // 1/s on the closing speed
     fendForce: 900, // N an arm can push with
+    guideStiffness: 14, // 1/s²: placing a held body (auto-plug), spring toward the target pose
+    guideDamping: 7, // 1/s
+    guideForce: 1800, // N the arms can place with
+    guideTorque: 900, // N·m
     minMass: 20, // kg: lighter scraps are ignored
     frontSpread: 0.8, // m out along the surface from under the front mounts (walking stance)
     rearSpread: 1.3, // m, rear mounts

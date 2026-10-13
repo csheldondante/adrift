@@ -16,6 +16,7 @@ export function hintFor(game: Game): string {
   const x = sh.x;
   const y = sh.y;
   if (game.time < game.noticeUntil) return game.notice;
+  if (game.autoPlug.phase !== 'idle') return `${game.autoPlug.message} (any move key takes over)`;
   const g = game.grapple;
   if (g.coreHooked) return 'Harpoon is in a power core: <b>hold RMB</b> to winch and tear it out';
 
@@ -35,9 +36,9 @@ export function hintFor(game: Game): string {
   const dead = game.power.socketSpots().filter((s) => !s.live);
   const deadNear = dead.find((s) => near(s.x, s.y, x, y, 8));
   if (carried) {
-    if (deadNear) return 'Press the core against the <b>blue socket</b>: red or copper has to touch its face';
+    if (deadNear) return game.arms.held === carried ? 'Bring it close: the ship plugs it in by itself' : 'Grab it (<b>E</b>) and bring it close, or press it against the <b>blue socket</b>: red or copper has to touch its face';
     return dead.length
-      ? 'Live power core in tow: take it to a <b>dead blue socket</b> (they pulse in the dark) to power that section'
+      ? 'Live power core: carry it (<b>E</b> to grab) to a <b>dead blue socket</b> (they pulse in the dark) and the ship plugs it in'
       : 'Live power core in tow';
   }
   const held = game.arms.held;

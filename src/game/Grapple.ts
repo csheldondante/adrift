@@ -20,8 +20,8 @@
 // The ship-side anchor is configurable (tune.grapple.pivot, P to toggle): at the center of
 // mass the tether never torques the ship; at the nose, tension swings the ship's heading.
 //
-// Stealing power: a harpoon that bites within reach of a body's red power core (a robot's,
-// a wreck's) hooks the core itself. Winch in (hold RMB) and the core tears out of its housing
+// Stealing power: a harpoon that bites within reach of a robot's red power core (or a
+// wreck's) hooks the core itself; a loose battery is just towed. Winch in (hold RMB) and the core tears out of its housing
 // as a loose body of its own, still on the line, still live: the robot it powered goes dead
 // and drifts, and the core can be hauled to a wall socket. The tear happens when the line
 // pulls hard (tune.grapple.ripTension) or the winch brings you up against the body.
@@ -238,7 +238,10 @@ export class Grapple implements Tool {
    * is the salvage.
    */
   private coreNear(b: PixelBody): number[] | null {
-    if (b.tags.salvage) return null;
+    // only a robot (or its wreck) has a core in a housing to tear out; a battery speared on
+    // its casing is just towed
+    const l = b.tags.label;
+    if (l !== 'securityBot' && l !== 'drone' && l !== 'wreck') return null;
     const g = b.grid;
     const R = 7;
     const seen = new Uint8Array(g.w * g.h);

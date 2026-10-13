@@ -62,6 +62,8 @@ export class Arms {
   /** The loose body the arms are holding, if any. */
   held: PixelBody | null = null;
   private joint: ImpulseJoint | null = null;
+  /** While placing the held body: the pose the arms drive it to (see guide). */
+  private guideTarget: { x: number; y: number; angle: number } | null = null;
   /** Bodies just let go of: not fended until they drift out of reach (they leave freely). */
   private readonly ignore = new Set<PixelBody>();
   /** Bodies being fended off this step (tests). */
@@ -190,6 +192,7 @@ export class Arms {
   private drop(): void {
     if (this.joint) this.ctx.physics.world.removeImpulseJoint(this.joint, true);
     this.joint = null;
+    this.guideTarget = null;
     this.held = null;
     for (const a of this.arms) this.free(a);
   }
@@ -214,6 +217,7 @@ export class Arms {
       return;
     }
     if (this.held && !this.held.alive) this.drop();
+    this.steer(dt);
     for (const a of this.arms) {
       if (a.on && !this.alive(a.on)) this.free(a);
       if (a.step >= 0) {
@@ -347,10 +351,17 @@ export class Arms {
   }
 
   private grab(b: PixelBody, grips: { arm: Arm; x: number; y: number }[]): void {
+    this.held = b;
+    this.lock();
+    for (const g of grips) this.plant(g.arm, b, g.x, g.y, 0.1);
+    if (this.walk.attached) this.limitGrips(HOLD_WHILE_WALKING);
+  }
+
+  /** Locks the held body to the ship at the current relative pose (a fixed joint). */
+  private lock(): void {
     const { ctx } = this;
     const sb = ctx.ship.body;
-    const body = b.body;
-    // lock at the current relative pose (same construction as the harpoon clamp)
+    const body = this.held!.body;
     const st = sb.translation();
     const bt = body.translation();
     const ba = body.rotation();
@@ -359,9 +370,47 @@ export class Arms {
     const local = { x: Math.cos(ba) * dx + Math.sin(ba) * dy, y: -Math.sin(ba) * dx + Math.cos(ba) * dy };
     const params = ctx.physics.R.JointData.fixed({ x: 0, y: 0 }, 0, local, sb.rotation() - ba);
     this.joint = ctx.physics.world.createImpulseJoint(params, sb, body, true);
-    this.held = b;
-    for (const g of grips) this.plant(g.arm, b, g.x, g.y, 0.1);
-    if (this.walk.attached) this.limitGrips(HOLD_WHILE_WALKING);
+  }
+
+  /**
+   * Places the held body: instead of the rigid hold, the arms drive it toward a world pose
+   * (its center of mass at x, y, rotated to `angle`) with a force- and torque-limited
+   * spring-damper, the reaction going into the ship. null locks it again where it is.
+   */
+  guide(target: { x: number; y: number; angle: number } | null): void {
+    if (!this.held) return;
+    if (target && this.joint) {
+      this.ctx.physics.world.removeImpulseJoint(this.joint, true);
+      this.joint = null;
+    } else if (!target && !this.joint) this.lock();
+    this.guideTarget = target;
+  }
+
+  private steer(dt: number): void {
+    const t = this.guideTarget;
+    const b = this.held;
+    if (!t || !b) return;
+    const L = tune.arms;
+    const sb = this.ctx.ship.body;
+    const body = b.body;
+    const m = body.mass();
+    const c = body.worldCom();
+    const v = body.linvel();
+    const sv = sb.linvel();
+    let fx = m * (L.guideStiffness * (t.x - c.x) - L.guideDamping * (v.x - sv.x));
+    let fy = m * (L.guideStiffness * (t.y - c.y) - L.guideDamping * (v.y - sv.y));
+    const f = Math.hypot(fx, fy);
+    if (f > L.guideForce) {
+      fx *= L.guideForce / f;
+      fy *= L.guideForce / f;
+    }
+    body.applyImpulse({ x: fx * dt, y: fy * dt }, true);
+    sb.applyImpulse({ x: -fx * dt, y: -fy * dt }, true);
+    const err = Math.atan2(Math.sin(t.angle - body.rotation()), Math.cos(t.angle - body.rotation()));
+    const I = body.principalInertia();
+    let tq = I * (L.guideStiffness * err - L.guideDamping * (body.angvel() - sb.angvel()));
+    tq = Math.max(-L.guideTorque, Math.min(L.guideTorque, tq));
+    body.applyTorqueImpulse(tq * dt, true);
   }
 
   /** Keeps at most `n` arms on the held body (the nearest); the rest go back to walking. */

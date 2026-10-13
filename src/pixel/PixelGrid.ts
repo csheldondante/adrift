@@ -119,7 +119,7 @@ export class PixelGrid {
         this.hp[i] -= dmg * armor * fall * gate;
         res.changed = growRect(res.changed, x, y);
         if (this.hp[i] <= 0) {
-          if (res.destroyed.length < maxDestroyedReport || MAT_FLAGS[m] & F.EXPLOSIVE) {
+          if (res.destroyed.length < maxDestroyedReport || MAT_FLAGS[m] & (F.EXPLOSIVE | F.RUPTURES)) {
             res.destroyed.push({ x, y, mat: m, shade: this.shade[i] });
           }
           this.mat[i] = M.EMPTY;

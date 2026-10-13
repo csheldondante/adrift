@@ -1176,6 +1176,93 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       while (performance.now() - t0 < 6000 && g.ship.alive) await sleep(16);
       log('crush', { dead: !g.ship.alive, cause: g.ship.deathCause, ms: Math.round(performance.now() - t0) });
     }
+    if (md === 'autoplug') {
+      // Lantern's hall (?level=lantern): grab the dock battery mid-hall (E), then hands off:
+      // the ship should fly to the socket wall, clamp on, walk beside the socket, place the
+      // battery and the socket should latch it
+      const g = game();
+      const px = g.pixels;
+      const L = LANTERN;
+      const battery = px.bodies.find((b) => b.grid.w === 24 && b.grid.h === 12)!;
+      // clear the hall's other junk out of reach
+      let k = 0;
+      for (const o of px.bodies) {
+        const oc = o.body.worldCom();
+        if (o === battery || o.tags.machine || Math.hypot(oc.x - m(2000), oc.y - m(1320)) > 14) continue;
+        o.body.setTranslation({ x: m(1500 + 40 * k++), y: m(1320) }, true);
+        o.body.setLinvel({ x: 0, y: 0 }, true);
+      }
+      place(m(2010), m(1300), 0);
+      const t = battery.body.translation();
+      const com = battery.body.worldCom();
+      battery.body.setTranslation({ x: t.x - com.x + m(2010), y: t.y - com.y + m(1300) - 2.4 }, true);
+      battery.body.setLinvel({ x: 0, y: 0 }, true);
+      battery.body.setAngvel(0, true);
+      await sleep(50);
+      input.simulateDown('KeyE');
+      await sleep(40);
+      input.simulateUp('KeyE');
+      await sleep(200);
+      const held = g.arms.held === battery ? true : g.arms.held ? `other ${g.arms.held.grid.w}x${g.arms.held.grid.h}` : false;
+      const t0 = performance.now();
+      const trace: unknown[] = [];
+      let next = 0;
+      while (performance.now() - t0 < 20000 && !g.autoPlug.plugs && battery.alive) {
+        const tt = performance.now() - t0;
+        if (tt > next) {
+          next += 500;
+          const c = battery.body.worldCom();
+          trace.push([+(tt / 1000).toFixed(1), g.autoPlug.phase, g.walk.attached ? 1 : 0, +(g.ship.x / CELL).toFixed(0), +(g.ship.y / CELL).toFixed(0), +(c.x / CELL).toFixed(0), +(c.y / CELL).toFixed(0), +battery.body.rotation().toFixed(2), g.hazards.explosions]);
+        }
+        await sleep(30);
+      }
+      await sleep(1500);
+      if (!battery.alive) {
+        log('autoplug', { held, error: 'battery destroyed', explosions: g.hazards.explosions, trace });
+        continue;
+      }
+      const c = battery.body.worldCom();
+      log('autoplug', { held, plugs: g.autoPlug.plugs, ms: Math.round(performance.now() - t0), live: g.power.live, latched: g.autoPlug.latched(battery), armsHold: !!g.arms.held, battery: [+(c.x / CELL).toFixed(0), +(c.y / CELL).toFixed(0)], socket: [L.socket.x, L.socket.y], hp: Math.round(g.ship.health), trace });
+      g.zoom = 30;
+      g.debugCamera = { x: m(L.socket.x - 10), y: m(L.socket.y) };
+      await sleep(300);
+      await shot('autoplug');
+      g.debugCamera = null;
+    }
+    if (md === 'corebang') {
+      // a battery ruptured by a cut explodes; a battery speared on its casing is towed whole
+      const g = game();
+      const px = g.pixels;
+      const cells = (b: { grid: { mat: Uint8Array } }) => b.grid.mat.reduce((n: number, v: number) => n + (v === M.POWER ? 1 : 0), 0);
+      const batteries = px.bodies.filter((b) => b.grid.w === 24 && b.grid.h === 12);
+      const [a, b] = batteries;
+      // spear b on its casing end, winch it in
+      place(m(1990), m(1300), 0);
+      b.body.setTranslation({ x: m(1990) + 4, y: m(1300) - 0.75 }, true);
+      b.body.setLinvel({ x: 0, y: 0 }, true);
+      b.body.setAngvel(0, true);
+      b.body.setRotation(0, true);
+      await sleep(200);
+      const end = b.localToWorld(2.5, 1.5, { x: 0, y: 0 }); // casing corner, away from the core
+      aim(end.x, end.y);
+      await sleep(200);
+      const p0 = cells(b);
+      const bodies0 = px.bodies.length;
+      input.simulateDown('Mouse2');
+      await sleep(2500);
+      input.simulateUp('Mouse2');
+      log('core-spear', { hooked: g.grapple.state, coreHooked: g.grapple.coreHooked, rips: g.grapple.rips, powerBefore: p0, powerAfter: b.alive ? cells(b) : -1, alive: b.alive, newBodies: px.bodies.length - bodies0 });
+      g.grapple.detach();
+      // rupture a: blast its core
+      const e0 = g.hazards.explosions;
+      a.body.setTranslation({ x: m(1960), y: m(1380) }, true);
+      a.body.setLinvel({ x: 0, y: 0 }, true);
+      await sleep(100);
+      const ac = a.body.worldCom();
+      px.damageCircle(ac.x, ac.y, 0.4, 500);
+      await sleep(600);
+      log('core-rupture', { explosions: g.hazards.explosions - e0, aAlive: a.alive });
+    }
     if (md === 'walkgrab') {
       // clamp onto a wall (E with nothing in reach), grab a crate while walking (E), walk with
       // it on two arms, let it go (E) still walking, then Space pushes off
