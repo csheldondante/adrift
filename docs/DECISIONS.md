@@ -2,6 +2,24 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-13 — Less janky controls: the line lets go on arrival, E grabs, arms fend
+
+Playtest: "When I grapple and attach to a surface my grapple should disengage automatically not hold me there. I think E to grab debris otherwise arms should just move slow moving debris around the ship."
+
+**Harpoon arrival.** Winching up against what the line holds used to lock the ship there with a rigid joint ("clamped") until you clicked again. Now, winched against something to stand on, the hull-walk feet clamp on and the line lets go by itself. That covers the structure, a machine, or a body at least three times the ship's mass (`grapple.standMassRatio`); for the player, arriving means landing. Lighter debris just stays on a short line. The rigid clamp state is gone: carrying debris is now the arms' job, so the two features no longer overlap.
+
+**E grabs.** The arms no longer catch whatever drifts slowly into them, which grabbed things you didn't want and made the ship's mass jump. E now does one thing at a time, in this order:
+1. let go of what the arms hold;
+2. while walking, let go of the surface;
+3. grab the nearest debris in reach that is slower than `arms.grabSpeed` relative to you;
+4. with nothing to grab, clamp onto the surface.
+
+Grabbing a body on the harpoon line hands it from the line to the arms.
+
+**Arms fend.** With nothing held, the nearest arm meets slow debris drifting in and eases it out past a standoff. It damps the approach (spring-damper on the reduced mass) and pushes, so the debris slides round the ship rather than piling onto it. The push is capped at what an arm can exert (`arms.fendForce`), and the ship takes the reaction, so heavy junk shoves you instead. Debris faster than `grabSpeed` gets through and hits, as before. The body on the harpoon line is exempt, or towing would fight the arms.
+
+**Tests:** the clamp, shield and ride autotests now use E and arrival. A new `arrive` test harpoons a wall 10.8 m away, holds RMB, and ends up walking on it with the line idle.
+
 ## 2026-10-13 — Hosted on GitHub Pages; PolyForm Noncommercial
 
 The user wants to share builds with friends easily, the same way as Reclaimed (deployed the same day).

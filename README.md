@@ -45,9 +45,9 @@ The top-left minimap reveals the ship as you explore. It always shows you (white
 | G | Use a door or airlock panel within reach (it needs power). An airlock cycles: it shuts the open door, vents or pumps the chamber to match the far side, then opens the far door |
 | Left mouse (hold) | Cutter laser. It heats what it hits; a material gives way past its burn point (armor and girders only at white heat, and they work the laser harder). Pushes loose things; overheating locks it until cool |
 | Shift + left mouse | Weld beam: the cutter defocused, wide and at low power. Glowing metal pressed together fuses, so lay a plate over a breach (or hold it there with the arms) and run the weld beam along the seam. Held too long, it still cuts |
-| Right mouse | Fire harpoon; click again to let go; hold to winch in (clamps on contact). A harpoon that bites next to a robot's red core hooks the core: winch and it tears out, still live, for a wall socket |
-| (drift slowly into debris) | The four arms catch it: carry it as a shield or ram |
-| E | Let go of what the arms hold (it keeps its momentum). Otherwise clamp onto the hull (or let go); then **A / D** walk along it on the arms and **Space** pushes off. The camera rolls so the hull is down. |
+| Right mouse | Fire harpoon; click again to let go; hold to winch in. Winched up against a wall (or a machine, or anything much heavier than you) your feet clamp on and the line lets go by itself; lighter debris stays on a short line for the arms to grab. A harpoon that bites next to a robot's red core hooks the core: winch and it tears out, still live, for a wall socket |
+| (slow debris drifting in) | The arms ease it aside so it slides round the ship (fast junk still hits) |
+| E | Grab the nearest debris in reach with the arms (carry it as a shield or ram), or let go of it (it keeps its momentum). With nothing to grab, clamp onto the hull (or let go); then **A / D** walk along it on the arms and **Space** pushes off. The camera rolls so the hull is down. |
 | Q | Pay out tether slack (hold RMB to winch in) |
 | M | Mute sound (you hear your own ship; other sounds only through what you touch, or through air) |
 | Wheel | Zoom |

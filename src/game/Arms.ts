@@ -1,8 +1,11 @@
-// Four articulated arms on the ship's flanks. Two jobs:
-//   - grab: drift up to a loose body slowly enough (relative speed under arms.grabSpeed) and
-//     close enough that an arm can reach it, and the arms catch it. The hold is a fixed joint
-//     at the current relative pose, like the harpoon clamp, so the held body is a shield or a
-//     battering ram, and letting go (E) leaves it with its momentum (tow it, then throw it).
+// Four articulated arms on the ship's flanks. Three jobs:
+//   - fend: loose debris drifting in slowly (relative speed under arms.grabSpeed) is met by
+//     the nearest arm and eased aside, so it slides round the ship instead of piling onto it.
+//     It's a force-limited push, and the ship feels the reaction. Faster junk gets through.
+//   - grab (E): the arms catch the nearest loose body within reach that isn't moving too
+//     fast. The hold is a fixed joint at the current relative pose, so the held body is a
+//     shield or a battering ram, and letting go (E) leaves it with its momentum (tow it,
+//     then throw it).
 //   - walk: while the hull-walk feet are clamped on (HullWalk does the physics), the arms are
 //     the feet. Each foot stays planted until it falls too far behind its stance point, then
 //     steps there in an arc. Diagonal pairs alternate so two feet are always down.
@@ -58,8 +61,10 @@ export class Arms {
   /** The loose body the arms are holding, if any. */
   held: PixelBody | null = null;
   private joint: ImpulseJoint | null = null;
-  /** Bodies just let go of: ignored until they drift out of reach (no instant re-grab). */
+  /** Bodies just let go of: not fended until they drift out of reach (they leave freely). */
   private readonly ignore = new Set<PixelBody>();
+  /** Bodies being fended off this step (tests). */
+  fending = 0;
   /** Mean arm-tip speed this frame (m/s), for the servo sound. */
   motion = 0;
   /** A foot or hand landed this step (world point, strength 0..1); read and cleared by the game. */
@@ -200,7 +205,8 @@ export class Arms {
     for (const a of this.arms) this.free(a);
   }
 
-  fixedUpdate(dt: number, canGrab: boolean): void {
+  /** `skip`: a body the arms leave alone (the one on the harpoon line). */
+  fixedUpdate(dt: number, skip: PixelBody | null = null): void {
     const sh = this.ctx.ship;
     if (!sh.alive) {
       this.detachAll();
@@ -224,8 +230,7 @@ export class Arms {
       this.gait();
     } else {
       // feet that were walking come off the surface (but a hold keeps its grips)
-      if (!this.held) for (const a of this.arms) this.free(a);
-      if (canGrab && !this.held) this.tryGrab();
+      if (!this.held) this.fend(dt, skip);
     }
   }
 
@@ -237,40 +242,104 @@ export class Arms {
     }
   }
 
-  /** Catches a nearby loose body that is drifting slowly enough relative to the ship. */
-  private tryGrab(): void {
-    const { ctx } = this;
-    const sh = ctx.ship;
+  /** Where each arm can touch body `b` (rays from its mount toward the body's center). */
+  private grips(b: PixelBody): { arm: Arm; x: number; y: number; d: number }[] {
+    const ctx = this.ctx;
+    const c = b.body.worldCom();
+    const out: { arm: Arm; x: number; y: number; d: number }[] = [];
+    for (const a of this.arms) {
+      const m = this.shipToWorld(a.mount.x, a.mount.y, w1);
+      const base = Math.atan2(c.y - m.y, c.x - m.x);
+      let best: { x: number; y: number; d: number } | null = null;
+      for (const off of [0, 0.45, -0.45]) {
+        const dx = Math.cos(base + off);
+        const dy = Math.sin(base + off);
+        const hit = ctx.pixels.raycast(m.x, m.y, dx, dy, this.reach);
+        if (hit && hit.target === b && (!best || hit.dist < best.d)) best = { x: hit.x + dx * CELL * 0.5, y: hit.y + dy * CELL * 0.5, d: hit.dist };
+      }
+      if (best) out.push({ arm: a, ...best });
+    }
+    return out;
+  }
+
+  /** Loose bodies near enough to touch, nearest first. */
+  private nearby(): PixelBody[] {
+    const sh = this.ctx.ship;
+    const out: { b: PixelBody; d: number }[] = [];
+    for (const b of this.ctx.pixels.bodies) {
+      if (!b.alive || b.tags.machine || b.body.mass() < tune.arms.minMass) continue;
+      b.boundingCircle(circ);
+      const d = Math.hypot(circ.x - sh.x, circ.y - sh.y) - circ.r;
+      if (d <= this.reach + 1.5) out.push({ b, d });
+    }
+    return out.sort((p, q) => p.d - q.d).map((p) => p.b);
+  }
+
+  /**
+   * E: catches the nearest loose body within reach that isn't moving too fast relative to
+   * the ship. Returns true if something was caught.
+   */
+  tryGrab(): boolean {
+    if (this.held || this.walk.attached || !this.ctx.ship.alive) return false;
+    const sv = this.ctx.ship.body.linvel();
+    for (const b of this.nearby()) {
+      const grips = this.grips(b);
+      if (!grips.length) continue;
+      const slow = grips.some((g) => {
+        const v = b.body.velocityAtPoint(g);
+        return Math.hypot(v.x - sv.x, v.y - sv.y) < tune.arms.grabSpeed;
+      });
+      if (!slow) continue;
+      this.ignore.delete(b);
+      this.grab(b, grips);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Eases slow debris aside: the arm nearest each body meets it, damps its approach and
+   * pushes it off toward a standoff, so it slides round the ship. Force-limited, with the
+   * reaction on the ship.
+   */
+  private fend(dt: number, skip: PixelBody | null): void {
+    const sh = this.ctx.ship;
     const L = tune.arms;
     const sv = sh.body.linvel();
-    const reach = this.reach;
-    for (const b of ctx.pixels.bodies) {
-      if (!b.alive || b.tags.machine || this.ignore.has(b) || b.body.mass() < L.minMass) continue;
-      b.boundingCircle(circ);
-      if (Math.hypot(circ.x - sh.x, circ.y - sh.y) - circ.r > reach + 1.5) continue;
-      // each arm looks for the body along a few rays from its mount toward the body's center
-      const c = b.body.worldCom();
-      const grips: { arm: Arm; x: number; y: number }[] = [];
-      let slow = false;
-      for (const a of this.arms) {
-        const m = this.shipToWorld(a.mount.x, a.mount.y, w1);
-        const base = Math.atan2(c.y - m.y, c.x - m.x);
-        let best: { x: number; y: number; d: number } | null = null;
-        for (const off of [0, 0.45, -0.45]) {
-          const dx = Math.cos(base + off);
-          const dy = Math.sin(base + off);
-          const hit = ctx.pixels.raycast(m.x, m.y, dx, dy, reach);
-          if (hit && hit.target === b && (!best || hit.dist < best.d)) best = { x: hit.x + dx * CELL * 0.5, y: hit.y + dy * CELL * 0.5, d: hit.dist };
-        }
-        if (!best) continue;
-        grips.push({ arm: a, x: best.x, y: best.y });
-        const v = b.body.velocityAtPoint(best);
-        if (Math.hypot(v.x - sv.x, v.y - sv.y) < L.grabSpeed) slow = true;
-      }
-      if (!grips.length || !slow) continue;
-      this.grab(b, grips);
-      return;
+    const used = new Set<Arm>();
+    this.fending = 0;
+    for (const b of this.nearby()) {
+      if (b === skip || this.ignore.has(b)) continue;
+      const g = this.grips(b).filter((p) => !used.has(p.arm)).sort((p, q) => p.d - q.d)[0];
+      if (!g) continue;
+      // separation direction: from the ship's center out through the touch point
+      let nx = g.x - sh.x;
+      let ny = g.y - sh.y;
+      const dist = Math.hypot(nx, ny) || 1;
+      nx /= dist;
+      ny /= dist;
+      const v = b.body.velocityAtPoint(g);
+      const rvx = v.x - sv.x;
+      const rvy = v.y - sv.y;
+      if (Math.hypot(rvx, rvy) > L.grabSpeed) continue; // too fast to catch: it hits
+      const closing = -(rvx * nx + rvy * ny); // m/s toward the ship
+      const intrude = L.fendStandoff - g.d; // m inside the standoff (along the arm)
+      if (intrude <= 0 && closing <= 0) continue;
+      // spring-damper on the reduced mass, capped at what an arm can push
+      const m1 = b.body.mass();
+      const m2 = sh.body.mass();
+      const mu = (m1 * m2) / (m1 + m2);
+      const f = Math.min(L.fendForce, mu * (Math.max(0, intrude) * L.fendStiffness + Math.max(0, closing) * L.fendDamping));
+      if (f <= 0) continue;
+      const j = f * dt;
+      b.body.applyImpulseAtPoint({ x: nx * j, y: ny * j }, g, true);
+      sh.body.applyImpulse({ x: -nx * j, y: -ny * j }, true);
+      used.add(g.arm);
+      this.fending++;
+      if (g.arm.on !== b) this.plant(g.arm, b, g.x, g.y, 0.12);
     }
+    // arms not fending go back to the tuck
+    for (const a of this.arms) if (!used.has(a)) this.free(a);
   }
 
   private grab(b: PixelBody, grips: { arm: Arm; x: number; y: number }[]): void {
@@ -420,7 +489,7 @@ export class Arms {
 
   status(): string {
     if (this.held) return `holding ${Math.round(this.held.body.mass())} kg · E let go`;
-    return this.walk.attached ? 'walking' : 'ready';
+    return this.walk.attached ? 'walking' : this.fending ? 'fending off' : 'ready · E grab';
   }
 
   dispose(): void {

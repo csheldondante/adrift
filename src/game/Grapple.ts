@@ -6,7 +6,12 @@
 //
 // States: idle → flying → (thunk) → attached [tightening → snug] → idle
 //                       ↘ (out of range) → retracting → idle
-// Right mouse: fire (idle) / release (attached). Q/E reel in/out.
+// Right mouse: click fires (idle) / lets go (attached); hold winches in. Q pays out slack.
+//
+// Arriving: winched up against what you're tethered to, if it's something to stand on (the
+// structure, a machine, a body much heavier than the ship), the hull-walk feet clamp on and
+// the line lets go by itself (onArrive). Lighter debris just stays on a short line; the
+// arms grab it on E.
 //
 // Rendering: a taut rope with a clear line of sight between its ends is drawn as a straight
 // line (physics segments always wobble a bit); slack or wrapped rope is drawn through the
@@ -33,7 +38,7 @@ import { Rope } from './Rope';
 import { Ship } from './Ship';
 import type { GameContext, Tool } from './types';
 
-type State = 'idle' | 'flying' | 'attached' | 'clamped' | 'retracting';
+type State = 'idle' | 'flying' | 'attached' | 'retracting';
 type P = { x: number; y: number };
 
 const nose = { x: 0, y: 0 };
@@ -100,10 +105,14 @@ export class Grapple implements Tool {
   private pressedWhileAttached = false;
   private holdTime = 0;
   private winching = false;
-  private clampJoint: import('@dimforge/rapier2d-compat').ImpulseJoint | null = null;
   private pivotMode = tune.grapple.pivot;
   /** The harpoon bit next to a power core it can tear out (see header). */
   coreHooked = false;
+  /**
+   * Winched up against something to stand on: the game clamps the feet on. Returns true if
+   * they took hold (the line then lets go).
+   */
+  onArrive?: () => boolean;
   private ripT = 0;
   /** Cores torn out so far (tests). */
   rips = 0;
@@ -124,10 +133,10 @@ export class Grapple implements Tool {
   get snug(): boolean {
     return this.state === 'attached' && !this.tightening;
   }
-  /** A loose pixel body the ship is tethered or clamped to (the cushion/shield), if any. */
+  /** A loose pixel body the ship is tethered to (the cushion/shield), if any. */
   get heldBody(): PixelBody | null {
     const t = this.target;
-    return (this.state === 'attached' || this.state === 'clamped') && t?.kind === 'pixelBody' ? (t as PixelBody) : null;
+    return this.state === 'attached' && t?.kind === 'pixelBody' ? (t as PixelBody) : null;
   }
 
   get targetObject(): PixelObject | null {
@@ -162,7 +171,6 @@ export class Grapple implements Tool {
     if (this.state === 'idle') this.fire();
     else if (this.state === 'flying') this.state = 'retracting';
     else if (this.state === 'attached') this.pressedWhileAttached = true;
-    else if (this.state === 'clamped') this.detach();
   }
 
   /** RMB up: a short click on an attached line lets go; ending a hold just stops winching. */
@@ -380,8 +388,6 @@ export class Grapple implements Tool {
   }
 
   detach(): void {
-    if (this.clampJoint) this.ctx.physics.world.removeImpulseJoint(this.clampJoint, true);
-    this.clampJoint = null;
     this.winching = false;
     this.pressedWhileAttached = false;
     this.rope?.destroy();
@@ -403,10 +409,6 @@ export class Grapple implements Tool {
     // a hold counts from the press, so fire-and-hold winches as soon as the harpoon sticks
     this.holdTime = held ? this.holdTime + dt : 0;
     this.winching = this.state === 'attached' && held && this.holdTime > tune.grapple.holdToWinch;
-    if (this.state === 'clamped') {
-      this.updateClamped();
-      return;
-    }
     if (!this.ctx.ship.alive) {
       if (this.state !== 'idle') this.detach();
       return;
@@ -472,9 +474,10 @@ export class Grapple implements Tool {
       this.ripT = rope.tension > g.ripTension ? this.ripT + dt : 0;
       if ((this.ripT > 0.15 || (this.winching && this.touching(t))) && this.rip(t as PixelBody)) return true;
     }
-    // touching what we're tethered to while winching (or fully reeled in): clamp on
-    if ((this.winching || rope.length <= g.minLength + 0.5) && this.touching(t)) {
-      this.clamp();
+    // winched up against something to stand on: the feet take over and the line lets go
+    if ((this.winching || rope.length <= g.minLength + 0.5) && this.standable(t) && this.touching(t) && this.onArrive?.()) {
+      this.detach();
+      this.ctx.stage.shake(0.1);
       return false;
     }
     if (this.winching) return true;
@@ -530,38 +533,11 @@ export class Grapple implements Tool {
     return hit;
   }
 
-  /**
-   * Locks the ship to what it's tethered to, at the current relative pose. Clamped to a loose
-   * body you carry it (shield, battering ram); clamped to something moving you ride it.
-   */
-  private clamp(): void {
-    const { ctx } = this;
-    const t = this.target!;
-    const body = t.kind === 'terrain' ? ctx.pixels.terrain.body : (t as PixelBody).body;
-    const sb = ctx.ship.body;
-    // ship origin expressed in the target's frame, and the relative rotation
-    const st = sb.translation();
-    const bt = body.translation();
-    const ba = body.rotation();
-    const dx = st.x - bt.x;
-    const dy = st.y - bt.y;
-    const local = { x: Math.cos(ba) * dx + Math.sin(ba) * dy, y: -Math.sin(ba) * dx + Math.cos(ba) * dy };
-    const params = ctx.physics.R.JointData.fixed({ x: 0, y: 0 }, 0, local, sb.rotation() - ba);
-    this.clampJoint = ctx.physics.world.createImpulseJoint(params, sb, body, true);
-    this.rope?.destroy();
-    this.rope = null;
-    this.state = 'clamped';
-    this.winching = false;
-    for (const r of this.ribbons) r.hide();
-    for (const c of this.claw) c.hide();
-    ctx.ship.nose(nose);
-    for (let k = 0; k < 10; k++) ctx.particles.spark(nose.x, nose.y, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 5, 0.2, 0.07, 0.3);
-    ctx.stage.shake(0.15);
-  }
-
-  private updateClamped(): void {
-    const t = this.target;
-    if (!this.ctx.ship.alive || !t || (t.kind === 'pixelBody' && !(t as PixelBody).alive)) this.detach();
+  /** Something to stand on: the structure, a machine, or a body much heavier than the ship. */
+  private standable(t: PixelObject): boolean {
+    if (t.kind === 'terrain') return true;
+    const b = t as PixelBody;
+    return !!b.tags.machine || b.body.mass() >= this.ctx.ship.body.mass() * tune.grapple.standMassRatio;
   }
 
   /** True if nothing solid blocks the straight line between the rope's ends. */
@@ -640,8 +616,6 @@ export class Grapple implements Tool {
         return `ready · ${pivot}`;
       case 'flying':
         return `firing · ${pivot}`;
-      case 'clamped':
-        return `clamped · click RMB to let go`;
       case 'retracting':
         return `missed · ${pivot}`;
       default:

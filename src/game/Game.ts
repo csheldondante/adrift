@@ -170,6 +170,12 @@ export class Game {
     this.security = new Security(this.ctx, level.entities, level.doors, this.projectiles);
     this.cutter = new Cutter(this.ctx);
     this.grapple = new Grapple(this.ctx);
+    // winched up against a wall (or something big): the feet clamp on, the line lets go
+    this.grapple.onArrive = () => {
+      if (!this.walk.tryAttach()) return false;
+      this.sound.emit('clamp', this.ship.x, this.ship.y, 1);
+      return true;
+    };
     this.slots = [this.cutter, this.grapple];
     this.walk = new HullWalk(this.ctx);
     this.arms = new Arms(this.ctx, this.walk);
@@ -222,12 +228,13 @@ export class Game {
     c.weld = input.down('ShiftLeft') || input.down('ShiftRight');
     c.reel = input.down('KeyQ') ? 1 : 0; // pay out slack (holding RMB winches in)
     c.move = (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
-    // E: let go of what the arms hold, else clamp onto the nearest surface (or let go of it);
-    // Space kicks off a surface
+    // E: let go of what the arms hold; walking, let go of the surface; else grab the nearest
+    // debris in reach, or failing that clamp onto the nearest surface. Space kicks off a surface
     const sh = this.ship;
     if (input.hit('KeyE')) {
       if (this.arms.release()) this.sound.emit('release', sh.x, sh.y, 1);
       else if (this.walk.attached) this.walk.detach();
+      else if (this.arms.tryGrab()) this.onGrab();
       else if (this.walk.tryAttach()) this.sound.emit('clamp', sh.x, sh.y, 1);
     }
     // consume the press every frame: a Space tap made while flying must not linger and kick
@@ -306,8 +313,7 @@ export class Game {
     if (this.walk.attached) out.push({ obj: this.walk.surfaceBody ?? this.pixels.terrain, w: 1 });
     if (this.arms.held) out.push({ obj: this.arms.held, w: 1 });
     const gt = this.grapple.targetObject;
-    if (gt && this.grapple.state === 'clamped') out.push({ obj: gt, w: 1 });
-    else if (gt && this.grapple.attached) out.push({ obj: gt, w: 0.2 + 0.8 * Math.min(1, this.grapple.tautness) }); // a slack line barely carries
+    if (gt && this.grapple.attached) out.push({ obj: gt, w: 0.2 + 0.8 * Math.min(1, this.grapple.tautness) }); // a slack line barely carries
     // resting against something (actual contact points, not just overlapping bounds)
     const { world } = this.physics;
     const cands: import('@dimforge/rapier2d-compat').Collider[] = [];
@@ -470,15 +476,8 @@ export class Game {
 
   private stepArms(dt: number): void {
     const arms = this.arms;
-    const before = arms.held;
-    // the harpoon clamp already holds something: the arms stay out of it
-    arms.fixedUpdate(dt, this.grapple.state !== 'clamped');
-    if (arms.held && arms.held !== before) {
-      // caught: the arms take over from the harpoon line if it was on the same body
-      if (this.grapple.targetObject === arms.held) this.grapple.detach();
-      const c = arms.held.body.worldCom();
-      this.sound.emit('grab', c.x, c.y, 1);
-    }
+    // the body on the harpoon line is being towed in: the arms don't fend it off
+    arms.fixedUpdate(dt, this.grapple.heldBody);
     for (const l of arms.landed) this.sound.emit('foot', l.x, l.y, l.e);
     // footfalls on a hull send small vibration pulses (see Scanner)
     this.footPingT -= dt;
@@ -488,6 +487,15 @@ export class Game {
       this.footPingT = 0.45;
     }
     arms.landed.length = 0;
+  }
+
+  /** The arms just caught something (E). */
+  private onGrab(): void {
+    const b = this.arms.held!;
+    // the arms take over from the harpoon line if it was on the same body
+    if (this.grapple.targetObject === b) this.grapple.detach();
+    const c = b.body.worldCom();
+    this.sound.emit('grab', c.x, c.y, 1);
   }
 
   /** V: knock on whatever the ship is touching (or standing on) and scan it. */

@@ -53,6 +53,7 @@ export const tune = {
     winchSpeed: 4, // m/s winch while RMB is held (slow enough that docking is under the safe impact speed)
     holdToWinch: 0.18, // s: RMB held longer than this winches; a shorter click releases
     retractSpeed: 60, // m/s head returning after a miss
+    standMassRatio: 3, // winched against a body at least this many ship masses: the feet clamp on and the line lets go
     ripTension: 900, // N: a hooked power core tears out of its housing past this pull
     snugTension: 400, // N sustained pretension at which the fast winch hands over to take-up
     autoTakeUp: true, // keep reeling in slack while attached (rope stays straight); E pays out
@@ -127,7 +128,11 @@ export const tune = {
   arms: {
     upper: 1.25, // m upper arm
     fore: 1.25, // m forearm (reach = upper + fore from the mount)
-    grabSpeed: 2.5, // m/s: loose bodies drifting slower than this relative to the ship get caught
+    grabSpeed: 2.5, // m/s: loose bodies slower than this relative to the ship can be grabbed (E) or fended off
+    fendStandoff: 1.6, // m from an arm's mount: slow debris is eased back out past this
+    fendStiffness: 6, // 1/s² per m inside the standoff (times the reduced mass)
+    fendDamping: 3, // 1/s on the closing speed
+    fendForce: 900, // N an arm can push with
     minMass: 20, // kg: lighter scraps are ignored
     frontSpread: 0.8, // m out along the surface from under the front mounts (walking stance)
     rearSpread: 1.3, // m, rear mounts

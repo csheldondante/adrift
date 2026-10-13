@@ -52,7 +52,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
   };
 
   await sleep(800);
-  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'laser', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope', 'walk', 'arms', 'sound', 'heat', 'organs'] : mode.split(',');
+  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'laser', 'hook', 'clamp', 'arrive', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope', 'walk', 'arms', 'sound', 'heat', 'organs'] : mode.split(',');
   for (const md of modes) {
     restart();
     await sleep(300);
@@ -162,8 +162,8 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       log(md, { landed, walked, idleSpeed, pushOff: { attached: w.attached, awaySpeed: +(v2.x * nx + v2.y * ny).toFixed(2) } });
     }
     if (md === 'arms') {
-      // drift slowly into a crate: the arms catch it; carry it; E lets go with momentum; a fast
-      // approach is not caught
+      // a crate drifts slowly in: the arms fend it off (no catch); E grabs it; carry it; E lets
+      // go with momentum. A fast one gets through (not fended, not grabbable)
       for (const approach of [1.2, 6]) {
         restart();
         await sleep(300);
@@ -181,8 +181,21 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         crate.body.setAngvel(0, true);
         aim(20, 81);
         const t0 = performance.now();
-        while (performance.now() - t0 < 2500 && !g.arms.held) await sleep(16);
-        const caught = { approach, held: !!g.arms.held, ms: Math.round(performance.now() - t0), hp: Math.round(g.ship.health + g.ship.shield), grips: g.arms.arms.filter((a) => a.on).length };
+        let fended = 0;
+        let minGap = Infinity;
+        while (performance.now() - t0 < 1500) {
+          fended = Math.max(fended, g.arms.fending);
+          const cc = crate.body.worldCom();
+          minGap = Math.min(minGap, Math.hypot(cc.x - g.ship.x, cc.y - g.ship.y) - circ.r);
+          await sleep(16);
+        }
+        const cvel = crate.body.linvel();
+        const fend = { autoHeld: !!g.arms.held, fended, minGap: +minGap.toFixed(2), crateVy: +cvel.y.toFixed(2), hp: Math.round(g.ship.health + g.ship.shield) };
+        input.simulateDown('KeyE');
+        await sleep(40);
+        input.simulateUp('KeyE');
+        await sleep(100);
+        const caught = { approach, fend, held: !!g.arms.held, grips: g.arms.arms.filter((a) => a.on).length };
         if (!g.arms.held) {
           log('arms', { caught });
           continue;
@@ -463,7 +476,8 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       log('harpoon miss', { stateAfter: g.grapple.state });
     }
     if (md === 'clamp') {
-      // harpoon a crate in open space, hold RMB to winch it in and clamp, carry it, click to let go
+      // harpoon a crate in open space, hold RMB to winch it in (it stays on a short line: no
+      // clamp), E grabs it, carry it, E lets go
       const g = game();
       const crate = g.pixels.bodies.find((b) => !b.explosiveCells && !b.tags.salvage && b.body.mass() > 100)!;
       crate.body.setTranslation({ x: 20, y: 80 }, true);
@@ -475,21 +489,28 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       aim(cc.x, cc.y);
       input.simulateDown('Mouse2');
       const t0 = performance.now();
-      while (performance.now() - t0 < 4000 && g.grapple.state !== 'clamped') await sleep(16);
-      const tClamp = performance.now() - t0;
+      const near = () => Math.hypot(crate.body.worldCom().x - g.ship.x, crate.body.worldCom().y - g.ship.y) < 3.2;
+      while (performance.now() - t0 < 4000 && !near()) await sleep(16);
+      await sleep(300);
       input.simulateUp('Mouse2');
+      const onLine = g.grapple.state;
+      input.simulateDown('KeyE');
+      await sleep(40);
+      input.simulateUp('KeyE');
+      await sleep(100);
+      const tClamp = performance.now() - t0;
       shot('clamped');
       const gap0 = Math.hypot(crate.body.worldCom().x - g.ship.x, crate.body.worldCom().y - g.ship.y);
       await hold('Space', 1000);
       if (!crate.alive) { log('clamp', { error: 'crate destroyed', health: Math.round(g.ship.health) }); continue; }
       const gap1 = Math.hypot(crate.body.worldCom().x - g.ship.x, crate.body.worldCom().y - g.ship.y);
       const v = g.ship.body.linvel();
-      log('clamp', { health: Math.round(g.ship.health), state: g.grapple.state, clampMs: Math.round(tClamp), gapBefore: +gap0.toFixed(2), gapAfterThrust: +gap1.toFixed(2), speed: +Math.hypot(v.x, v.y).toFixed(2) });
-      input.simulateDown('Mouse2');
+      log('clamp', { onLine, grabbed: g.arms.held === crate, health: Math.round(g.ship.health), state: g.grapple.state, clampMs: Math.round(tClamp), gapBefore: +gap0.toFixed(2), gapAfterThrust: +gap1.toFixed(2), speed: +Math.hypot(v.x, v.y).toFixed(2) });
+      input.simulateDown('KeyE');
       await sleep(40);
-      input.simulateUp('Mouse2');
+      input.simulateUp('KeyE');
       await sleep(100);
-      log('clamp release', { state: g.grapple.state });
+      log('clamp release', { armsHold: !!g.arms.held });
       // short click on an attached line releases it
       place(32, 81, Math.PI);
       await sleep(100);
@@ -1155,8 +1176,36 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       while (performance.now() - t0 < 6000 && g.ship.alive) await sleep(16);
       log('crush', { dead: !g.ship.alive, cause: g.ship.deathCause, ms: Math.round(performance.now() - t0) });
     }
+    if (md === 'arrive') {
+      // harpoon a wall and hold RMB: on arrival the feet clamp on and the line lets go
+      const g = game();
+      const sh = g.ship;
+      let wall: { x: number; y: number; dist: number } | null = null;
+      for (let k = 0; k < 16 && !wall; k++) {
+        const a = (k / 16) * Math.PI * 2;
+        const h = g.pixels.raycast(sh.x, sh.y, Math.cos(a), Math.sin(a), 40);
+        if (h && h.target.kind === 'terrain' && h.dist > 6) wall = h;
+      }
+      if (!wall) {
+        log('arrive', { error: 'no wall in range' });
+        continue;
+      }
+      aim(wall.x, wall.y);
+      await sleep(300);
+      input.simulateDown('Mouse2');
+      const t0 = performance.now();
+      while (performance.now() - t0 < 6000 && !g.walk.attached) {
+        aim(wall.x, wall.y);
+        await sleep(16);
+      }
+      await sleep(400);
+      input.simulateUp('Mouse2');
+      await sleep(300);
+      log('arrive', { dist: +wall.dist.toFixed(1), walking: g.walk.attached, line: g.grapple.state, ms: Math.round(performance.now() - t0), hp: Math.round(g.ship.health) });
+    }
     if (md === 'ride') {
-      // harpoon a mover, winch in until clamped, and check the ship travels with it
+      // harpoon a mover, winch in: on arrival the feet clamp on and the line lets go; the ship
+      // should travel with it
       const g = game();
       const mc = g.machinery.machines.find((x) => !x.shaft);
       if (!mc) {
@@ -1171,13 +1220,15 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       aim(b.x + gw / 2, b.y + gh / 2);
       input.simulateDown('Mouse2');
       const t0 = performance.now();
-      while (performance.now() - t0 < 5000 && g.grapple.state !== 'clamped') await sleep(16);
+      while (performance.now() - t0 < 5000 && !g.walk.attached) await sleep(16);
       input.simulateUp('Mouse2');
+      const arrived = { walking: g.walk.attached, line: g.grapple.state, ms: Math.round(performance.now() - t0) };
       const s0 = { x: g.ship.x, y: g.ship.y };
       const m0 = mc.body.body.translation();
       await sleep(1500);
       const m1 = mc.body.body.translation();
       log('ride', {
+        arrived,
         state: g.grapple.state,
         shipMoved: +Math.hypot(g.ship.x - s0.x, g.ship.y - s0.y).toFixed(2),
         moverMoved: +Math.hypot(m1.x - m0.x, m1.y - m0.y).toFixed(2),
@@ -1314,7 +1365,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       await sleep(1500);
       clearInterval(tw);
       log('tethered slam', { attached, hp: Math.round(g2.ship.health), cause: g2.ship.deathCause, maxImpact: +maxImpact.toFixed(1) });
-      // shield: clamp a crate on the nose, then ram the prow with the crate leading
+      // shield: winch a crate in, grab it (E), then ram the prow with the crate leading
       restart();
       await sleep(200);
       const g3 = game();
@@ -1327,9 +1378,14 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       aim(shield.body.worldCom().x, shield.body.worldCom().y);
       input.simulateDown('Mouse2');
       const ts = performance.now();
-      while (performance.now() - ts < 5000 && g3.grapple.state !== 'clamped') await sleep(16);
+      while (performance.now() - ts < 5000 && Math.hypot(shield.body.worldCom().x - g3.ship.x, shield.body.worldCom().y - g3.ship.y) > 3.2) await sleep(16);
+      await sleep(300);
       input.simulateUp('Mouse2');
-      const clamped = g3.grapple.state;
+      input.simulateDown('KeyE');
+      await sleep(40);
+      input.simulateUp('KeyE');
+      await sleep(100);
+      const clamped = g3.arms.held === shield ? 'held' : 'not held';
       const hpBefore = g3.ship.health;
       g3.ship.body.setLinvel({ x: 12, y: 0 }, true);
       shield.body.setLinvel({ x: 12, y: 0 }, true);
