@@ -4,7 +4,7 @@ A 2D zero-G salvage game: fly on inertia, carve a derelict apart pixel by pixel,
 It draws on PixelJunk Shooter's handling and Noita-style destructible pixels.
 The design doc is at `.claude/docs/design/Zero_G_Salvage_Reconciled_Prototype_Handoff.md`.
 
-**Play:** https://csheldondante.github.io/space_junkers/ — needs a browser with WebGPU: desktop Chrome or Edge (113+). Keyboard and mouse.
+**Play:** https://csheldondante.github.io/adrift/ — needs a browser with WebGPU: desktop Chrome or Edge (113+). Keyboard and mouse.
 
 ## Run
 

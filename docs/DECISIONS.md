@@ -24,7 +24,7 @@ Grabbing a body on the harpoon line hands it from the line to the arms.
 
 The user wants to share builds with friends easily, the same way as Reclaimed (deployed the same day).
 
-- **Hosting:** a GitHub Actions workflow (`.github/workflows/pages.yml`, copied from Reclaimed) builds and publishes `dist/` to Pages on every push to `main`. Vite's `base: './'` makes asset paths relative, so the build runs from `/<repo>/`. This was checked by serving `dist/` under `/space_junkers/` in headless Chrome: Lantern loads, with no errors.
+- **Hosting:** a GitHub Actions workflow (`.github/workflows/pages.yml`, copied from Reclaimed) builds and publishes `dist/` to Pages on every push to `main`. Vite's `base: './'` makes asset paths relative, so the build runs from `/<repo>/`. This was checked by serving `dist/` under `/space_junkers/` (the repo is `adrift`, so it is served from `/adrift/`) in headless Chrome: Lantern loads, with no errors.
 - **Loading message:** building Lantern takes several seconds before the first frame, and a black page reads as broken to someone who just got a link. `index.html` now shows "Loading the derelict…" until the first Game exists.
 - **License:** PolyForm Noncommercial 1.0.0, the same as Reclaimed. It's source-available: friends can play, read, change and share it, but not use it commercially.
 
