@@ -13,7 +13,8 @@
 //   Shaft    x1380-1420 y990-1340   45 m straight up, hard corners at both ends.
 //   Airlock  x1426-1474 y1096-1156  off the shaft's right wall: outer and inner doors, a vent
 //                                   valve to the shaft, panels outside, inside and in the crew
-//                                   room (G). Powered from the start by the crew section's core.
+//                                   room (G). Powered from the start by the crew section's core;
+//                                   each door has its own wired motor (cut it: that door sticks).
 //   Crew     x1480-1700 y1060-1200  PRESSURIZED: lamps, a life-support pump that refills it
 //                                   whenever it's sealed, and a hatch in its floor down to:
 //   Store    x1612-1672 y1020-1054  a second battery.
@@ -75,7 +76,9 @@ export const LANTERN = {
     { x: 1450, y: 1095 }, // in the chamber floor
     { x: 1479, y: 1160 }, // crew side
   ],
+  lockMotors: { outer: { x: 1422, y: 1097 }, inner: { x: 1476, y: 1097 }, valve: { x: 1422, y: 1156 } },
   storeHatch: [1620, 1054, 1664, 1060] as R,
+  hatchMotor: { x: 1666, y: 1056 },
   hatchPanel: { x: 1604, y: 1059 },
 };
 
@@ -140,6 +143,12 @@ export function buildLantern(): LevelSpec {
   for (const x of [1530, 1650]) p.rect(x, 1200, 12, 3, M.LIGHT).rect(x + 5, 1203, 2, 1, M.CONDUIT);
   p.rect(1590, 1200, 14, 4, M.PUMP);
   p.rect(1710, 1010, 2, 110, M.CONDUIT).rect(1450, 1010, 262, 2, M.CONDUIT).rect(1604, 1012, 2, 45, M.CONDUIT).rect(1450, 1012, 2, 81, M.CONDUIT);
+  // door motors, each wired: the airlock doors' from the chamber-floor panel's line (under
+  // the chamber), the valve's off the shaft-side panel, the hatch's off the lower bus
+  p.rect(1421, 1095, 4, 5, M.CONDUIT).rect(1475, 1095, 4, 5, M.CONDUIT); // outer, inner
+  p.rect(1422, 1091, 57, 2, M.CONDUIT).rect(1422, 1093, 2, 2, M.CONDUIT).rect(1477, 1093, 2, 2, M.CONDUIT);
+  p.rect(1421, 1155, 4, 3, M.CONDUIT); // valve
+  p.rect(1665, 1055, 4, 4, M.CONDUIT).rect(1668, 1056, 24, 2, M.CONDUIT).rect(1690, 1012, 2, 46, M.CONDUIT); // hatch
 
   const devices: DeviceSpec[] = [
     { type: 'pump', cell: L.pump, outlet: { x: m(2120), y: m(1300) }, rate: 10, target: 1.1 },
@@ -154,12 +163,13 @@ export function buildLantern(): LevelSpec {
       outer: L.lockOuter,
       valve: L.lockValve,
       panels: L.lockPanels,
+      motors: L.lockMotors,
       chamber: { x: m(1450), y: m(1120) },
       inside: { x: m(1530), y: m(1120) },
       outside: { x: m(1400), y: m(1120) },
       rate: 8,
     },
-    { type: 'hatch', x0: L.storeHatch[0], y0: L.storeHatch[1], x1: L.storeHatch[2], y1: L.storeHatch[3], panel: L.hatchPanel },
+    { type: 'hatch', x0: L.storeHatch[0], y0: L.storeHatch[1], x1: L.storeHatch[2], y1: L.storeHatch[3], panel: L.hatchPanel, motor: L.hatchMotor },
   ];
 
   // back wall over every space (interior ambient) with some pipes for texture

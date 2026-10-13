@@ -13,14 +13,17 @@
 // Footfalls while hull-walking send small pulses; V knocks a strong one (anything you're
 // touching). The overlay is drawn after the darkness, so it reads in the dark.
 //
-// Likely growth: sensors hear knocks (a loud scan is a risk); a scan upgrade with range;
-// remembering scanned features on the minimap.
+// Every cell a pulse draws is also kept on the map (see Schematic.ts): the fresh picture
+// fades back to it rather than to nothing.
+//
+// Likely growth: sensors hear knocks (a loud scan is a risk); a scan upgrade with range.
 
 import * as THREE from 'three/webgpu';
 import { CELL } from '../config';
-import { F, M, MAT_BURN, MAT_FLAGS } from '../pixel/materials';
+import { F, MAT_FLAGS } from '../pixel/materials';
 import type { PixelObject } from '../pixel/PixelObject';
 import { ORDER } from '../render/order';
+import { drawCell, FEATURE, grey, KIND, S, SchematicMap } from './Schematic';
 
 interface Pulse {
   obj: PixelObject;
@@ -31,6 +34,8 @@ interface Pulse {
   /** Finished schematic, S×S texels per window cell. */
   img: Uint32Array;
   w: number; // window width in cells
+  x0: number; // window origin in the object's grid
+  y0: number;
   px: Uint32Array; // texture pixels
   tex: THREE.DataTexture;
   mesh: THREE.Mesh;
@@ -41,65 +46,19 @@ interface Pulse {
   band: number; // first entry still inside the bright ring front
 }
 
-const S = 3; // texels per cell: room for hairlines inside a cell
 const SPEED = 45 / CELL; // cells per second
 const RING = 2.5; // cells: width of the bright front
 const HOLD = 2.5; // s the finished picture holds
 const FADE = 2.5; // s it then takes to fade
 const MAX_PULSES = 5;
 
-// what each material is on the schematic
-const K = { NONE: 0, STRUCT: 1, TOUGH: 2, CONDUIT: 3, POWER: 4, SOCKET: 5, PUMP: 6, FIXTURE: 7, FUEL: 8, ENGINE: 9, WEAPON: 10 } as const;
-const KIND = new Uint8Array(256);
-for (let m = 1; m < 256; m++) if (MAT_FLAGS[m] & F.SOLID) KIND[m] = MAT_BURN[m] >= 0.85 ? K.TOUGH : K.STRUCT;
-KIND[M.CONDUIT] = K.CONDUIT;
-KIND[M.POWER] = K.POWER;
-KIND[M.SOCKET] = K.SOCKET;
-KIND[M.PANEL] = K.SOCKET;
-KIND[M.PUMP] = K.PUMP;
-KIND[M.LIGHT] = K.FIXTURE;
-KIND[M.EYE] = K.FIXTURE;
-KIND[M.FUEL] = K.FUEL;
-KIND[M.THRUSTER] = K.ENGINE;
-KIND[M.WEAPON] = K.WEAPON;
-/** Systems worth reporting (tests): cores, lines, sockets, pumps, fixtures, fuel. */
-const FEATURE = (k: number) => k === K.CONDUIT || k === K.POWER || k === K.SOCKET || k === K.PUMP || k === K.FIXTURE || k === K.FUEL;
-
-const grey = (v: number, a: number) => ((a << 24) | (v << 16) | (v << 8) | v) >>> 0;
 const PAPER = grey(0, 228); // the black fill over the walls
 const RING_PX = grey(255, 210);
 
-/** Grey level of a texel inside a cell of kind k, or -1 for plain paper. */
-function pattern(k: number, live: boolean, x: number, y: number, sx: number, sy: number): number {
-  const tx = x * S + sx; // object texel coords, so patterns run on across cells
-  const ty = y * S + sy;
-  switch (k) {
-    case K.STRUCT:
-      return (x % 8 === 0 && sx === 0) || (y % 8 === 0 && sy === 0) ? 48 : -1; // 1 m drafting grid
-    case K.TOUGH:
-      return (tx + ty) % 5 === 0 ? 150 : -1;
-    case K.CONDUIT:
-      return live ? 255 : (((tx + ty) / (2 * S)) | 0) & 1 ? 200 : -1;
-    case K.POWER:
-      return 255;
-    case K.SOCKET:
-      return live || (sx === 1 && sy === 1) ? 255 : -1;
-    case K.PUMP:
-      return (tx + ty) % 4 === 0 || (tx - ty + 4096) % 4 === 0 ? (live ? 255 : 130) : -1;
-    case K.FIXTURE:
-      return sx === 1 && sy === 1 ? (live ? 255 : 130) : -1;
-    case K.FUEL:
-      return ty % 3 === 0 ? 170 : -1;
-    case K.ENGINE:
-      return tx % 3 === 0 ? (live ? 230 : 110) : -1;
-    case K.WEAPON:
-      return tx % 3 === 0 || ty % 3 === 0 ? (live ? 230 : 110) : -1;
-  }
-  return -1;
-}
-
 export class Scanner {
   private readonly pulses: Pulse[] = [];
+  /** What's been scanned so far stays drawn on the walls. */
+  readonly map = new SchematicMap();
   /** Pulses sent so far, and the last few: cells reached and features revealed (tests). */
   sent = 0;
   readonly history: { reached: number; features: number; strength: number }[] = [];
@@ -171,30 +130,10 @@ export class Scanner {
     // draw the finished schematic once; frames only reveal it
     const tw = w * S;
     const img = new Uint32Array(tw * h * S);
-    const kindAt = (x: number, y: number) => (g.inside(x, y) ? KIND[g.mat[y * g.w + x]] : K.NONE);
     for (const k of order) {
       const lx = k % w;
       const ly = (k - lx) / w;
-      const x = lx + x0;
-      const y = ly + y0;
-      const gi = y * g.w + x;
-      const kind = KIND[g.mat[gi]];
-      const live = g.powered[gi] === 1;
-      const nl = kindAt(x - 1, y);
-      const nr = kindAt(x + 1, y);
-      const nd = kindAt(x, y - 1);
-      const nu = kindAt(x, y + 1);
-      for (let ty = 0; ty < S; ty++)
-        for (let tx = 0; tx < S; tx++) {
-          // outlines: surfaces bright, boundaries between materials finer
-          let edge = -1;
-          if (tx === 0 && nl !== kind) edge = nl === K.NONE ? 255 : 175;
-          if (tx === S - 1 && nr !== kind) edge = Math.max(edge, nr === K.NONE ? 255 : 175);
-          if (ty === 0 && nd !== kind) edge = Math.max(edge, nd === K.NONE ? 255 : 175);
-          if (ty === S - 1 && nu !== kind) edge = Math.max(edge, nu === K.NONE ? 255 : 175);
-          const v = edge >= 0 ? edge : pattern(kind, live, x, y, tx, ty);
-          img[(ly * S + ty) * tw + lx * S + tx] = v >= 0 ? grey(v, 255) : PAPER;
-        }
+      drawCell(g, lx + x0, ly + y0, img, tw, lx * S, ly * S, PAPER);
     }
     const data = new Uint8Array(img.length * 4);
     const tex = new THREE.DataTexture(data, tw, h * S, THREE.RGBAFormat);
@@ -208,7 +147,7 @@ export class Scanner {
     mesh.renderOrder = ORDER.glow;
     mesh.frustumCulled = false;
     obj.view.object.add(mesh); // rides along with a moving body
-    this.pulses.push({ obj, order: Int32Array.from(order), dist: Float32Array.from(dist), img, w, px: new Uint32Array(data.buffer), tex, mesh, age: 0, reach, strength, shown: 0, band: 0 });
+    this.pulses.push({ obj, order: Int32Array.from(order), dist: Float32Array.from(dist), img, w, x0, y0, px: new Uint32Array(data.buffer), tex, mesh, age: 0, reach, strength, shown: 0, band: 0 });
     while (this.pulses.length > MAX_PULSES) this.drop(0);
   }
 
@@ -236,6 +175,7 @@ export class Scanner {
       p.band = band;
       p.tex.needsUpdate = true;
     }
+    this.map.frameUpdate();
   }
 
   /** Copies one window cell's block of the schematic (or the ring) to the texture. */
@@ -243,6 +183,7 @@ export class Scanner {
     const lx = k % p.w;
     const ly = (k - lx) / p.w;
     const tw = p.w * S;
+    if (!ring) this.map.mark(p.obj, lx + p.x0, ly + p.y0);
     for (let ty = 0; ty < S; ty++) {
       const row = (ly * S + ty) * tw + lx * S;
       for (let tx = 0; tx < S; tx++) p.px[row + tx] = ring ? RING_PX : p.img[row + tx];
@@ -260,5 +201,6 @@ export class Scanner {
 
   dispose(): void {
     while (this.pulses.length) this.drop(0);
+    this.map.dispose();
   }
 }

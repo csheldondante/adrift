@@ -35,8 +35,11 @@ export type DeviceSpec =
   | { type: 'pressureDoor'; x0: number; y0: number; x1: number; y1: number; sensor: P; open: number; close: number }
   /** Pours air in at `outlet` (meters) while its pump cell is powered, up to `target` gas. */
   | { type: 'pump'; cell: P; outlet: P; rate: number; target: number }
-  /** A door you open and shut yourself (G at its panel cell), while the panel is powered. */
-  | { type: 'hatch'; x0: number; y0: number; x1: number; y1: number; panel: P; open?: boolean }
+  /**
+   * A door you open and shut yourself (G at its panel cell), while the panel is powered.
+   * It moves while its motor cell is powered (wire it in; defaults to the panel).
+   */
+  | { type: 'hatch'; x0: number; y0: number; x1: number; y1: number; panel: P; motor?: P; open?: boolean }
   /**
    * Two interlocked doors around a chamber. Using any of its panels cycles it to the other
    * side: shut the open door, vent the chamber through its valve (going out) or pump it up
@@ -49,6 +52,8 @@ export type DeviceSpec =
       /** A small slot from the chamber to the outside, opened to vent it. */
       valve: Rect4;
       panels: P[];
+      /** Motor cells: each door and the valve moves only while its own is powered (defaults to the first panel). */
+      motors?: { inner: P; outer: P; valve: P };
       /** Sample points (meters): the chamber, and beyond each door. */
       chamber: P;
       inside: P;

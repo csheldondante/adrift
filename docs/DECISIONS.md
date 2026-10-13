@@ -2,6 +2,26 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-13 — The scan map stays; doors have wired motors
+
+Playtest ask: "Schematics in walls should stay after you map them and they should show wires connecting power to doors and whatnot."
+
+**The map.** Every cell a pulse draws is remembered for its object, in a bitset, and kept on the walls as a dimmer schematic. A fresh pulse fades back to the map rather than to nothing. The map is redrawn from the matter as it is now, not frozen at scan time, so:
+- a line you mapped while it was dead turns solid when you power it;
+- doors show their current state;
+- cut-away cells drop out of the map.
+
+A frozen snapshot was the alternative. It's more "realistic", but it would leave you misled by stale wiring right after you fix it, which is the opposite of what the map is for. Knowing a door's state without rescanning is a small giveaway; we accept it.
+
+**Cost.** Terrain is split into 64-cell chunks. Each chunk gets its own texture, made the first time a cell in it is mapped. Up to three chunks are redrawn per frame: newly mapped ones first, then a slow sweep over the rest. A 16 m knock touches about 8 chunks. N toggles the map, for when you want the lit walls back.
+
+**Wires to doors.** Before this, airlock doors and hatches checked their panel's power: a logical link with nothing in the walls to show for it. Now each door and the vent valve has a motor cell (conduit) wired into the network, and it moves only while that motor is powered. In Lantern:
+- the airlock's two door motors are fed by a line under the chamber, off the chamber-floor panel's riser;
+- the valve's motor sits against the shaft-side panel;
+- the store hatch's motor runs off the lower bus.
+
+So the scan shows the real wiring, and cutting a motor's line jams that door, physically, with no special rule.
+
 ## 2026-10-13 — Never step time backwards
 
 **Bug:** the first animation frame's timestamp can come before the `performance.now()` that `main.ts` takes at init, so the first `dt` was negative (about −0.7 s). The extraction objective's decay, `progress − dt·2`, then *added* 1.4. The default level could count as "Salvage extracted" on its first frame; headless runs hit it about 3 times in 4.

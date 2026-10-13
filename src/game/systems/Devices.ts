@@ -40,7 +40,7 @@ interface Door {
   open: boolean;
   /** Slides along the long axis: vertical slabs rise, horizontal ones slide right. */
   vertical: boolean;
-  /** Moves only while this cell is powered (hatches and airlocks); null = always. */
+  /** Moves only while this motor cell is powered (hatches and airlocks); null = always. */
   power: P | null;
 }
 
@@ -75,9 +75,9 @@ export class Devices {
       if (d.type === 'pump') this.pumps.push(d);
       else if (d.type === 'airlock') {
         const p = d.panels[0];
-        const inner = this.addDoor(rectSpec('lock', d.inner), M.PDOOR, true, p);
-        const outer = this.addDoor(rectSpec('lock', d.outer), M.PDOOR, false, p);
-        const valve = this.addDoor(rectSpec('valve', d.valve), M.HULL, false, p);
+        const inner = this.addDoor(rectSpec('lock', d.inner), M.PDOOR, true, d.motors?.inner ?? p);
+        const outer = this.addDoor(rectSpec('lock', d.outer), M.PDOOR, false, d.motors?.outer ?? p);
+        const valve = this.addDoor(rectSpec('valve', d.valve), M.HULL, false, d.motors?.valve ?? p);
         const lock: Airlock = { spec: d, inner, outer, valve, state: 'in', timer: 0 };
         this.airlocks.push(lock);
         for (const c of d.panels) {
@@ -85,7 +85,7 @@ export class Devices {
           this.panels.push({ cell: c, lock });
         }
       } else if (d.type === 'hatch') {
-        const door = this.addDoor(d, M.PDOOR, d.open ?? false, d.panel);
+        const door = this.addDoor(d, M.PDOOR, d.open ?? false, d.motor ?? d.panel);
         ctx.pixels.paintTerrain(d.panel.x - 1, d.panel.y - 2, d.panel.x + 2, d.panel.y + 3, M.PANEL, false);
         this.panels.push({ cell: d.panel, door });
       } else this.addDoor(d, d.type === 'door' ? d.mat : M.PDOOR, false, null);

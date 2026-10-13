@@ -253,6 +253,10 @@ export class Game {
         this.noticeUntil = this.time + 2.5;
       }
     }
+    if (input.hit('KeyN')) {
+      this.notice = this.scanner.map.toggle() ? 'Scan map shown' : 'Scan map hidden';
+      this.noticeUntil = this.time + 1.5;
+    }
     if (input.hit('KeyF')) {
       sh.lampOn = !sh.lampOn;
       this.sound.emit('lamp', sh.x, sh.y, 1);

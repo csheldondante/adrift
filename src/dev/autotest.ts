@@ -821,6 +821,31 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       await sleep(1800);
       log('hatch', { before: h0, after: +hatch.t.toFixed(2), uses: g.devices.uses, storeGas: gasAt(1640, 1036) });
     }
+    if (md === 'map') {
+      // knock inside Lantern's airlock chamber, let the pulse fade: the schematic stays on the
+      // walls as the map, with the door motors' wiring back to the panels and the core
+      const g = game();
+      const tc = g.pixels.terrain.grid;
+      const motors = [...Object.values(LANTERN.lockMotors), LANTERN.hatchMotor];
+      place(m(1450), m(1104), 0);
+      await sleep(1200);
+      input.simulateDown('KeyV');
+      await sleep(40);
+      input.simulateUp('KeyV');
+      await sleep(7500); // ring out, hold, fade
+      g.zoom = 26;
+      g.debugCamera = { x: m(1500), y: m(1120) };
+      await sleep(400);
+      await shot('map');
+      g.debugCamera = null;
+      log('map', {
+        sent: g.scanner.sent,
+        mapCells: g.scanner.map.cells,
+        chunks: g.scanner.map.chunks,
+        motorsPowered: motors.map((c) => tc.powered[c.y * tc.w + c.x] === 1),
+        motorsMapped: motors.map((c) => g.scanner.map.isMapped(g.pixels.terrain, c.x, c.y)),
+      });
+    }
     if (md === 'rip') {
       // harpoon a drone from behind next to its core, hold to winch: the core tears out on the
       // line, still live, and the drone goes dead

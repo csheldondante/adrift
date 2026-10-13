@@ -38,7 +38,8 @@ The top-left minimap reveals the ship as you explore. It always shows you (white
 | Mouse | Aim: the ship always turns to face the cursor |
 | Space | Thrust forward |
 | F | Headlamp on/off (you need it to see; sensors can see it too) |
-| V | Knock on whatever you're touching or standing on. A vibration pulse spreads through the matter and draws a black and white schematic of what's inside it: power cores, live (solid) and dead (dashed) lines, sockets, pumps, tough material (hatched), and hidden cavities. Walking on a hull sends small pulses too |
+| V | Knock on whatever you're touching or standing on. A vibration pulse spreads through the matter and draws a black and white schematic of what's inside it: power cores, live (solid) and dead (dashed) lines, sockets, pumps, tough material (hatched), and hidden cavities. Walking on a hull sends small pulses too. What you scan stays drawn on the walls as a map, and door motors show wired to their power |
+| N | Show or hide the scan map |
 | G | Use a door or airlock panel within reach (it needs power). An airlock cycles: it shuts the open door, vents or pumps the chamber to match the far side, then opens the far door |
 | Left mouse (hold) | Cutter laser. It heats what it hits; a material gives way past its burn point (armor and girders only at white heat, and they work the laser harder). Hot metal pressed together welds: push a plate into a breach and heat the seam. Pushes loose things; overheating locks it until cool |
 | Right mouse | Fire harpoon; click again to let go; hold to winch in (clamps on contact). A harpoon that bites next to a robot's red core hooks the core: winch and it tears out, still live, for a wall socket |
