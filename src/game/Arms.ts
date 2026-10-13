@@ -2,7 +2,7 @@
 //   - fend: loose debris drifting in slowly (relative speed under arms.grabSpeed) is met by
 //     the nearest arm and eased aside, so it slides round the ship instead of piling onto it.
 //     It's a force-limited push, and the ship feels the reaction. Faster junk gets through.
-//   - grab (E): the arms catch the nearest loose body within reach that isn't moving too
+//   - grab (E): also while walking (two arms hold, two walk). The arms catch the nearest loose body within reach that isn't moving too
 //     fast. The hold is a fixed joint at the current relative pose, so the held body is a
 //     shield or a battering ram, and letting go (E) leaves it with its momentum (tow it,
 //     then throw it).
@@ -52,6 +52,7 @@ interface Arm {
   claw: [Ribbon, Ribbon];
 }
 
+const HOLD_WHILE_WALKING = 2; // arms that keep a grip while the others walk
 const w0 = { x: 0, y: 0 };
 const w1 = { x: 0, y: 0 };
 const circ = { x: 0, y: 0, r: 0 };
@@ -226,11 +227,14 @@ export class Arms {
     }
     this.pruneIgnored();
     if (this.walk.attached) {
-      if (this.held) this.drop();
+      // walking with something in hand: two arms keep the grip, the other two are the feet
+      if (this.held) this.limitGrips(HOLD_WHILE_WALKING);
       this.gait();
     } else {
       // feet that were walking come off the surface (but a hold keeps its grips)
-      if (!this.held) this.fend(dt, skip);
+      if (this.held) {
+        for (const a of this.arms) if (a.on && a.on !== this.held) this.free(a);
+      } else this.fend(dt, skip);
     }
   }
 
@@ -280,7 +284,7 @@ export class Arms {
    * the ship. Returns true if something was caught.
    */
   tryGrab(): boolean {
-    if (this.held || this.walk.attached || !this.ctx.ship.alive) return false;
+    if (this.held || !this.ctx.ship.alive) return false;
     const sv = this.ctx.ship.body.linvel();
     for (const b of this.nearby()) {
       const grips = this.grips(b);
@@ -357,6 +361,21 @@ export class Arms {
     this.joint = ctx.physics.world.createImpulseJoint(params, sb, body, true);
     this.held = b;
     for (const g of grips) this.plant(g.arm, b, g.x, g.y, 0.1);
+    if (this.walk.attached) this.limitGrips(HOLD_WHILE_WALKING);
+  }
+
+  /** Keeps at most `n` arms on the held body (the nearest); the rest go back to walking. */
+  private limitGrips(n: number): void {
+    const b = this.held!;
+    const c = b.body.worldCom();
+    const on = this.arms.filter((a) => a.on === b);
+    if (on.length <= n) return;
+    const d = (a: Arm) => {
+      const m = this.shipToWorld(a.mount.x, a.mount.y, w1);
+      return Math.hypot(m.x - c.x, m.y - c.y);
+    };
+    on.sort((p, q) => d(p) - d(q));
+    for (const a of on.slice(n)) this.free(a);
   }
 
   /** Walking gait: feet stay planted until they lag their stance point, then step to it. */
@@ -374,7 +393,7 @@ export class Arms {
     const stepping = [false, false];
     for (const a of this.arms) if (a.step >= 0) stepping[a.group] = true;
     for (const a of this.arms) {
-      if (a.step >= 0) continue;
+      if (a.step >= 0 || (this.held && a.on === this.held)) continue; // stepping, or holding
       const m = this.shipToWorld(a.mount.x, a.mount.y, w1);
       const mx = m.x;
       const my = m.y;
@@ -383,7 +402,7 @@ export class Arms {
       const lead = Math.max(-L.maxLead, Math.min(L.maxLead, vt * L.strideLead));
       const bx = mx + tx * (sideT * a.spread + lead) + nx * 1.2;
       const by = my + ty * (sideT * a.spread + lead) + ny * 1.2;
-      const hit = ctx.pixels.raycast(bx, by, -nx, -ny, 4.5);
+      const hit = ctx.pixels.raycast(bx, by, -nx, -ny, 4.5, this.held ?? undefined);
       if (!hit) continue;
       const hx = hit.x - nx * CELL * 0.5;
       const hy = hit.y - ny * CELL * 0.5;

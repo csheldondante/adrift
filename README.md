@@ -47,7 +47,7 @@ The top-left minimap reveals the ship as you explore. It always shows you (white
 | Shift + left mouse | Weld beam: the cutter defocused, wide and at low power. Glowing metal pressed together fuses, so lay a plate over a breach (or hold it there with the arms) and run the weld beam along the seam. Held too long, it still cuts |
 | Right mouse | Fire harpoon; click again to let go; hold to winch in. Winched up against a wall (or a machine, or anything much heavier than you) your feet clamp on and the line lets go by itself; lighter debris stays on a short line for the arms to grab. A harpoon that bites next to a robot's red core hooks the core: winch and it tears out, still live, for a wall socket |
 | (slow debris drifting in) | The arms ease it aside so it slides round the ship (fast junk still hits) |
-| E | Grab the nearest debris in reach with the arms (carry it as a shield or ram), or let go of it (it keeps its momentum). With nothing to grab, clamp onto the hull (or let go); then **A / D** walk along it on the arms and **Space** pushes off. The camera rolls so the hull is down. |
+| E | The arms: grab the nearest debris in reach (carry it as a shield or ram), or let go of it (it keeps its momentum). Works while walking too: two arms hold, two walk. Floating with nothing to grab, E clamps onto the hull; then **A / D** walk along it on the arms and **Space** pushes off. The camera rolls so the hull is down. |
 | Q | Pay out tether slack (hold RMB to winch in) |
 | M | Mute sound (you hear your own ship; other sounds only through what you touch, or through air) |
 | Wheel | Zoom |

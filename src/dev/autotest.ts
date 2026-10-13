@@ -52,7 +52,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
   };
 
   await sleep(800);
-  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'laser', 'hook', 'clamp', 'arrive', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope', 'walk', 'arms', 'sound', 'heat', 'organs'] : mode.split(',');
+  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'laser', 'hook', 'clamp', 'arrive', 'walkgrab', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope', 'walk', 'arms', 'sound', 'heat', 'organs'] : mode.split(',');
   for (const md of modes) {
     restart();
     await sleep(300);
@@ -1175,6 +1175,43 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       const t0 = performance.now();
       while (performance.now() - t0 < 6000 && g.ship.alive) await sleep(16);
       log('crush', { dead: !g.ship.alive, cause: g.ship.deathCause, ms: Math.round(performance.now() - t0) });
+    }
+    if (md === 'walkgrab') {
+      // clamp onto a wall (E with nothing in reach), grab a crate while walking (E), walk with
+      // it on two arms, let it go (E) still walking, then Space pushes off
+      const g = game();
+      const tapE = async () => {
+        input.simulateDown('KeyE');
+        await sleep(40);
+        input.simulateUp('KeyE');
+        await sleep(150);
+      };
+      place(27.6, 47.5, 0);
+      await sleep(200);
+      await tapE();
+      await sleep(500);
+      const clamped = g.walk.attached;
+      const crate = g.pixels.bodies.find((b) => !b.explosiveCells && !b.tags.salvage && !b.tags.machine && b.body.mass() > 100 && b.body.mass() < 400)!;
+      const com = crate.body.worldCom();
+      const t = crate.body.translation();
+      crate.body.setTranslation({ x: t.x - com.x + g.ship.x - 2.6, y: t.y - com.y + g.ship.y }, true);
+      crate.body.setLinvel(g.ship.body.linvel(), true);
+      crate.body.setAngvel(0, true);
+      await sleep(100);
+      await tapE();
+      const grabbed = { held: g.arms.held === crate, walking: g.walk.attached, grips: g.arms.arms.filter((a) => a.on === crate).length, feet: g.arms.arms.filter((a) => a.on && a.on !== crate).length };
+      const y0 = g.ship.y;
+      await hold('KeyD', 1500);
+      await hold('KeyA', 200);
+      const walked = { held: g.arms.held === crate, walking: g.walk.attached, moved: +Math.abs(g.ship.y - y0).toFixed(2), surfaceIsCrate: g.walk.surfaceBody === crate, hp: Math.round(g.ship.health) };
+      await shot('walkgrab');
+      await tapE();
+      const released = { held: !!g.arms.held, walking: g.walk.attached };
+      input.simulateDown('Space');
+      await sleep(60);
+      input.simulateUp('Space');
+      await sleep(300);
+      log('walkgrab', { clamped, grabbed, walked, released, afterSpace: { walking: g.walk.attached } });
     }
     if (md === 'arrive') {
       // harpoon a wall and hold RMB: on arrival the feet clamp on and the line lets go

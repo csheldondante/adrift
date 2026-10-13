@@ -10,11 +10,12 @@ Playtest: "When I grapple and attach to a surface my grapple should disengage au
 
 **E grabs.** The arms no longer catch whatever drifts slowly into them, which grabbed things you didn't want and made the ship's mass jump. E now does one thing at a time, in this order:
 1. let go of what the arms hold;
-2. while walking, let go of the surface;
-3. grab the nearest debris in reach that is slower than `arms.grabSpeed` relative to you;
-4. with nothing to grab, clamp onto the surface.
+2. grab the nearest debris in reach that is slower than `arms.grabSpeed` relative to you;
+3. with nothing to grab, clamp onto the surface (see below: E no longer lets go of one).
 
 Grabbing a body on the harpoon line hands it from the line to the arms.
+
+**E is only the arms (follow-up the same day).** The user: "While walking on the surface E should not let go space should. E should be used for the arms I think so you can grab things and walk along the surface." Space already pushed off a surface, so E no longer detaches. While walking, E grabs or lets go: two arms (the nearest to the piece) keep the grip and the other two stay feet. The hull-walk probe and the feet's raycasts ignore the held body, so you never "stand" on what you're carrying. Floating with nothing in reach, E still clamps onto a surface: that's the arms too, used as feet.
 
 **Arms fend.** With nothing held, the nearest arm meets slow debris drifting in and eases it out past a standoff. It damps the approach (spring-damper on the reduced mass) and pushes, so the debris slides round the ship rather than piling onto it. The push is capped at what an arm can exert (`arms.fendForce`), and the ship takes the reaction, so heavy junk shoves you instead. Debris faster than `grabSpeed` gets through and hits, as before. The body on the harpoon line is exempt, or towing would fight the arms.
 

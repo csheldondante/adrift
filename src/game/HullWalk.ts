@@ -39,6 +39,8 @@ export class HullWalk {
   /** The body being walked on, if it isn't terrain. */
   surfaceBody: PixelBody | null = null;
   private lostFor = 0;
+  /** A body that never counts as the surface: the one in the ship's arms (set by the game). */
+  ignore: PixelBody | null = null;
   private readonly near: PixelBody[] = [];
 
   constructor(private readonly ctx: GameContext) {}
@@ -56,6 +58,7 @@ export class HullWalk {
   private probe(x: number, y: number, out: { x: number; y: number }): boolean {
     this.near.length = 0;
     for (const b of this.ctx.pixels.bodies) {
+      if (b === this.ignore) continue;
       b.boundingCircle(circ);
       if (Math.hypot(circ.x - x, circ.y - y) < circ.r + RINGS[RINGS.length - 1]) this.near.push(b);
     }
@@ -87,7 +90,7 @@ export class HullWalk {
     if (!sh.alive) return false;
     const n = { x: 0, y: 0 };
     if (!this.probe(sh.x, sh.y, n)) return false;
-    const hit = this.ctx.pixels.raycast(sh.x, sh.y, -n.x, -n.y, tune.walk.reach);
+    const hit = this.ctx.pixels.raycast(sh.x, sh.y, -n.x, -n.y, tune.walk.reach, this.ignore ?? undefined);
     if (!hit) return false;
     this.attached = true;
     this.nx = n.x;
@@ -136,7 +139,7 @@ export class HullWalk {
     for (const off of FAN) {
       const c = Math.cos(off);
       const s = Math.sin(off);
-      const h = ctx.pixels.raycast(sh.x, sh.y, -(nx * c - ny * s), -(nx * s + ny * c), w.reach + 1);
+      const h = ctx.pixels.raycast(sh.x, sh.y, -(nx * c - ny * s), -(nx * s + ny * c), w.reach + 1, this.ignore ?? undefined);
       if (h && (!hit || h.dist < hit.dist)) hit = h;
     }
     if (!hit) {

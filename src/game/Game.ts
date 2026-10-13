@@ -228,14 +228,14 @@ export class Game {
     c.weld = input.down('ShiftLeft') || input.down('ShiftRight');
     c.reel = input.down('KeyQ') ? 1 : 0; // pay out slack (holding RMB winches in)
     c.move = (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
-    // E: let go of what the arms hold; walking, let go of the surface; else grab the nearest
-    // debris in reach, or failing that clamp onto the nearest surface. Space kicks off a surface
+    // E is the arms: let go of what they hold, else grab the nearest debris in reach (walking
+    // or not); floating with nothing to grab, clamp onto the nearest surface. Space kicks off
+    // a surface
     const sh = this.ship;
     if (input.hit('KeyE')) {
       if (this.arms.release()) this.sound.emit('release', sh.x, sh.y, 1);
-      else if (this.walk.attached) this.walk.detach();
       else if (this.arms.tryGrab()) this.onGrab();
-      else if (this.walk.tryAttach()) this.sound.emit('clamp', sh.x, sh.y, 1);
+      else if (!this.walk.attached && this.walk.tryAttach()) this.sound.emit('clamp', sh.x, sh.y, 1);
     }
     // consume the press every frame: a Space tap made while flying must not linger and kick
     // you off the next surface you clamp to
@@ -447,6 +447,7 @@ export class Game {
     const air = Math.min(1, sample.gas / 0.5);
     this.ship.refVx = sample.vx * air;
     this.ship.refVy = sample.vy * air;
+    this.walk.ignore = this.arms.held;
     if (this.walk.attached) {
       this.ship.idleEngines();
       this.walk.fixedUpdate(dt, this.controls.move);
