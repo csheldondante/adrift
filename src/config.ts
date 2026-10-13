@@ -71,10 +71,12 @@ export const tune = {
     heatPerSecond: 0.22, // laser heat gained while firing (≈4.5 s from cold to overheat)
     coolPerSecond: 0.45, // laser heat lost while not firing
     overheatCoolPerSecond: 0.4, // when overheated: locked out until it has cooled all the way down
+    weldSpread: 3, // Shift: the beam defocused this many times wider...
+    weldPower: 0.12, // ...at this fraction of the power (heat, damage, push, laser load)
   },
   heat: {
     conduction: 4, // 1/s heat exchange between neighboring cells (the glow spreads around a cut)
-    weldHeat: 0.6, // heat at a contact that fuses two pieces pressed together
+    weldHeat: 0.5, // fraction of a material's burn point at which pressed-together pieces fuse (glowing, not yet burning away)
     weldMinCells: 4, // hot touching cell pairs needed for a weld
     weldSpeed: 1.5, // m/s max relative speed at the joint (pressed, not bumped)
     weldGrace: 1.5, // s after a piece is cut free before it can weld (else it re-fuses across the kerf)

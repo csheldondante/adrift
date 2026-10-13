@@ -40,6 +40,9 @@ export function hintFor(game: Game): string {
       ? 'Live power core in tow: take it to a <b>dead blue socket</b> (they pulse in the dark) to power that section'
       : 'Live power core in tow';
   }
+  const held = game.arms.held;
+  if (held && held.alive && !held.tags.salvage && !isRobot(held))
+    return 'Holding a piece: press it where it goes, then <b>Shift + LMB</b> on the seam (the weld beam) until it glows and fuses';
   if (deadNear) return 'Dead power socket: it needs a <b>power core</b> (a battery from a locker, or a drone\'s core: harpoon near it and winch)';
 
   for (const r of robots) {
@@ -51,7 +54,7 @@ export function hintFor(game: Game): string {
     if (d.spec.type !== 'pressureDoor' || d.open) continue;
     const s = d.spec;
     if (near(((s.x0 + s.x1) / 2) * CELL, ((s.y0 + s.y1) / 2) * CELL, x, y, 10))
-      return 'Pressure door: opens when the room behind it holds air. Seal its breach (weld a plate on) and power its pump';
+      return 'Pressure door: opens when the room behind it holds air. Seal its breach (lay a plate over it, <b>Shift + LMB</b> the seam to weld it) and power its pump';
   }
   return '';
 }

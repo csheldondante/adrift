@@ -17,6 +17,7 @@ Built decisions and their rationale live in `docs/DECISIONS.md`. This file is fo
 - **Pulse from the surface, see a black and white schematic of the walls.** Status: *built* (2026-10-13): the scan is now a monochrome x-ray schematic.
 - **Couldn't remove enemy power cores.** Status: *built* (2026-10-13): harpoon near the core, then winch to tear it out.
 - **Airlocks:** doors you can open and close, double doors that keep pressure in, and systems that re-pressurize once a seal is made. Status: *built* (2026-10-13): hatches and airlocks (G at a panel), life-support pumps that refill a sealed room, and Lantern's crew section. Still an *idea*: unpowered manual cranks, and sensors that hear an airlock cycle.
+- **Welding didn't work in play.** Status: *fixed* (2026-10-13): weld heat set relative to burn point, a cooling-floor bug fixed, and the Shift weld beam added. Still an *idea*: a seam glow cue (cells at welding heat drawn distinctly), so you can see when to press.
 - **Schematics stay once mapped, and show wires from power to doors.** Status: *built* (2026-10-13): a persistent scan map, redrawn live, that N toggles. Door and valve motors are now wired cells in the network. Still an *idea*: a minimap drawn from the same mapped bits, and showing the panel-to-door control link (not only power).
 
 ## Making it a game: playtest notes and roadmap (user, 2026-10-12)

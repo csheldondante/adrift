@@ -10,6 +10,10 @@
 // out toward the aim while firing, clipped short of walls, and folds away when idle. The
 // beam leaves from its tip along the mount -> aim line.
 //
+// Shift defocuses it into a weld beam: wider and at a fraction of the power, so it brings a
+// seam up to a glow (welding heat, see Welder) instead of burning through. It's the same
+// beam, so held too long on soft metal it still cuts.
+//
 // Likely growth: weapons share this shape (ray -> impact -> effects). If several appear,
 // extract the "ray + impact effect" into a reusable beam component.
 
@@ -39,6 +43,8 @@ export class Cutter implements Tool {
   private tipLX = REST.x;
   private tipLY = REST.y;
   private active = false;
+  /** Defocused into the weld beam this step. */
+  private weld = false;
   /** Firing this step (beam on). */
   get firing(): boolean {
     return this.active;
@@ -82,7 +88,9 @@ export class Cutter implements Tool {
       if (this.overheated && this.heat <= 0) this.overheated = false;
       return;
     }
-    this.heat = Math.min(1, this.heat + c.heatPerSecond * (this.material ? MAT_LOAD[this.material] : 1) * dt);
+    this.weld = ctx.controls.weld;
+    const pw = this.weld ? c.weldPower : 1;
+    this.heat = Math.min(1, this.heat + c.heatPerSecond * pw * (this.material ? MAT_LOAD[this.material] : 1) * dt);
     if (this.heat >= 1) {
       this.overheated = true;
       ctx.ship.nose(nose);
@@ -109,16 +117,17 @@ export class Cutter implements Tool {
     }
     this.ex = hit.x;
     this.ey = hit.y;
-    const cx = hit.x + dx * c.radius * 0.5;
-    const cy = hit.y + dy * c.radius * 0.5;
+    const r = this.weld ? c.radius * c.weldSpread : c.radius;
+    const cx = hit.x + dx * r * 0.5;
+    const cy = hit.y + dy * r * 0.5;
     // heat first: the struck surface glows, and whatever is past its burn point gives
-    ctx.pixels.heatCircle(cx, cy, c.radius * 1.5, c.glowRate * dt);
-    ctx.pixels.damageCircle(cx, cy, c.radius, c.damagePerSecond * dt, true);
+    ctx.pixels.heatCircle(cx, cy, r * 1.5, c.glowRate * pw * dt);
+    ctx.pixels.damageCircle(cx, cy, r, c.damagePerSecond * pw * dt, true);
     // shove what we're hitting (machines are kinematic and ignore it)
-    if (hit.target.kind === 'pixelBody') (hit.target as PixelBody).body.applyImpulseAtPoint({ x: dx * c.push * dt, y: dy * c.push * dt }, { x: hit.x, y: hit.y }, true);
-    ctx.field.inject(cx, cy, c.radius, 0, c.heat * dt);
+    if (hit.target.kind === 'pixelBody') (hit.target as PixelBody).body.applyImpulseAtPoint({ x: dx * c.push * pw * dt, y: dy * c.push * pw * dt }, { x: hit.x, y: hit.y }, true);
+    ctx.field.inject(cx, cy, r, 0, c.heat * pw * dt);
     // sparks by material: glass melts quietly, armor and girders shower
-    const sparks = MAT_SPARK[this.material] * 1.6;
+    const sparks = MAT_SPARK[this.material] * 1.6 * pw;
     for (let k = 0; k < Math.floor(sparks + Math.random()); k++) {
       const sp = 3 + Math.random() * 7;
       const side = (Math.random() - 0.5) * 9;
@@ -203,14 +212,16 @@ export class Cutter implements Tool {
       return;
     }
     const flicker = 0.75 + Math.sin(this.t * 90) * 0.15 + Math.random() * 0.1;
-    this.core.set(this.sx, this.sy, this.ex, this.ey, 0.07, undefined, flicker);
-    this.glow.set(this.sx, this.sy, this.ex, this.ey, this.hitting ? 0.32 : 0.2, undefined, 0.35 * flicker);
+    const w = this.weld ? 0.5 : 1; // the weld beam: a fainter core in a wider glow
+    this.core.set(this.sx, this.sy, this.ex, this.ey, 0.07 * w, undefined, flicker * w);
+    this.glow.set(this.sx, this.sy, this.ex, this.ey, (this.hitting ? 0.32 : 0.2) * (this.weld ? 2.2 : 1), undefined, 0.35 * flicker);
   }
 
   status(): string {
     if (this.overheated) return 'OVERHEATED';
     // the beam tells you what you're on: in the dark that's how you learn what's tough
-    return this.active ? (this.hitting ? `on ${MAT_NAME[this.material] ?? 'matter'}` : 'firing') : 'ready';
+    const mode = this.weld ? 'weld beam ' : '';
+    return this.active ? (this.hitting ? `${mode}on ${MAT_NAME[this.material] ?? 'matter'}` : `${mode}firing`) : 'ready';
   }
 
   dispose(): void {

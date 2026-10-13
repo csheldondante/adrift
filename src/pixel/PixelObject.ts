@@ -13,6 +13,12 @@ import type { PhysOwner } from '../physics/Physics';
 import { PixelView } from '../render/PixelView';
 
 let scratchHot = new Int32Array(1024);
+/**
+ * Heat below which a cell counts as cold and leaves the hot set. Low enough that a weak
+ * source (the edge of the weld beam: a few thousandths a step) still accumulates instead
+ * of being zeroed every frame.
+ */
+const COLD = 0.003;
 
 export abstract class PixelObject implements PhysOwner {
   abstract readonly kind: 'terrain' | 'pixelBody';
@@ -111,7 +117,7 @@ export abstract class PixelObject implements PhysOwner {
     for (let c = 0; c < n; c++) {
       const i = cells[c];
       const t = heat[i] * Math.exp(-dt * MAT_COOL[mat[i]]) - dt * 0.01;
-      if (t <= 0.01 || mat[i] === 0) {
+      if (t <= COLD || mat[i] === 0) {
         heat[i] = 0;
         this.hot.delete(i);
       } else heat[i] = t;

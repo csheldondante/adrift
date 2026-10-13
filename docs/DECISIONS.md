@@ -2,6 +2,25 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-13 — Welding that works with the real cutter: the weld beam
+
+Playtest: "Did you ever add welding with the heat ray? If so I can't get it to work."
+
+Welding had been in since the materials-and-heat milestone, but every test cheated: pieces were teleported into contact and heat applied directly, never with the cutter. A test using the real beam showed it could not weld, for three reasons:
+
+1. **Welding heat was above burning heat.** The welder wanted 0.6, but hull burns at 0.5 and plate at 0.35. The beam ate the metal before it was hot enough to fuse, and the rim fell below 0.6 within about 0.2 s of letting go.
+2. **Weak heat never accumulated.** Cooling zeroed any cell under 0.01 every frame. A cell at the edge of the beam gains less than that per step, so a plate next to a glowing wall stayed exactly cold. This is a real bug that affected all gentle heating; the cold floor is now 0.003.
+3. **The beam pushed the plate away** (radiation pressure), and contact only counted within about 6 cm.
+
+**Fix:**
+- The weld point is now a fraction (0.5) of each material's own burn point: glowing, but not yet giving way. Tough material needs proportionally more.
+- Contact reaches two cells, since molten metal bridges a hairline gap.
+- New **weld beam** (Shift + LMB): the same laser, defocused three times wider at 0.12 power. Heat, damage, push and laser load all scale down with it. It brings a seam to a glow in about 1.3 s; hull under its centre starts burning at about 2.6 s, so the window is real but you can't hold it forever.
+
+**Why not exempt welding from damage, or add a separate tool:** the user's physics-damage rule. The weld beam is the same beam with less intensity, so it still cuts soft metal if held.
+
+**Verified with the real cutter in Lantern's hall:** a plate laid over the breach welds in 1.3 s, and a plate held in the arms welds in 2.2 s. All earlier weld tests still pass.
+
 ## 2026-10-13 — The scan map stays; doors have wired motors
 
 Playtest ask: "Schematics in walls should stay after you map them and they should show wires connecting power to doors and whatnot."

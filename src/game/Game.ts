@@ -78,7 +78,7 @@ export class Game {
   readonly security: Security;
   readonly cutter: Cutter;
   readonly grapple: Grapple;
-  readonly controls: Controls = { thrust: 0, reel: 0, move: 0, aimX: 0, aimY: 0 };
+  readonly controls: Controls = { thrust: 0, reel: 0, move: 0, aimX: 0, aimY: 0, weld: false };
   readonly walk: HullWalk;
   readonly arms: Arms;
   readonly sound: Soundscape;
@@ -219,6 +219,7 @@ export class Game {
     // controls
     const c = this.controls;
     c.thrust = input.down('Space') ? 1 : 0;
+    c.weld = input.down('ShiftLeft') || input.down('ShiftRight');
     c.reel = input.down('KeyQ') ? 1 : 0; // pay out slack (holding RMB winches in)
     c.move = (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
     // E: let go of what the arms hold, else clamp onto the nearest surface (or let go of it);

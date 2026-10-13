@@ -55,7 +55,7 @@ export class Hud {
       'hud-help',
       this.root,
       `<b>Mouse</b> aim (the ship turns to face it) · <b>Space</b> thrust · <b>F</b> lamp (sensors see it)<br>
-       <b>V</b> knock: vibration scan of what you touch (walking scans too; what you scan stays mapped, <b>N</b> hides the map) · <b>G</b> use a door / airlock panel · <b>LMB</b> cutter (heats until it burns; hot metal pressed together welds) · <b>RMB</b> harpoon · click again: let go · hold: winch in &amp; clamp on contact<br>
+       <b>V</b> knock: vibration scan of what you touch (walking scans too; what you scan stays mapped, <b>N</b> hides the map) · <b>G</b> use a door / airlock panel · <b>LMB</b> cutter (heats until it burns) · <b>Shift+LMB</b> weld beam (wide and gentle: glowing metal pressed together fuses) · <b>RMB</b> harpoon · click again: let go · hold: winch in &amp; clamp on contact<br>
        <b>E</b> let go of what the arms hold · clamp to hull / let go · drift slowly into debris: the arms catch it · <b>A/D</b> walk · <b>Space</b> push off · <b>Q</b> pay out tether · <b>M</b> mute · 
 <b>P</b> rope pivot COM/nose · <b>Wheel</b> zoom · <b>R</b> restart · <b>H</b> hide help · <b>\`</b> debug panel`,
     );

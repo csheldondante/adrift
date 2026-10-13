@@ -18,6 +18,8 @@ export interface Controls {
   move: number; // -1..1 walking along a surface (A/D, screen left/right)
   aimX: number; // world meters; the ship steers to face this point
   aimY: number;
+  /** Cutter defocused into a wide, low-power weld beam (Shift). */
+  weld: boolean;
 }
 
 export interface GameContext {

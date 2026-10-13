@@ -821,6 +821,105 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       await sleep(1800);
       log('hatch', { before: h0, after: +hatch.t.toFixed(2), uses: g.devices.uses, storeGas: gasAt(1640, 1036) });
     }
+    if (md === 'weldplay') {
+      // welding the way a player does it: the patch laid against the breach once (not pinned
+      // every frame), the real cutter fired at the seam, then at the rim and the plate pushed on
+      const g = game();
+      const px = g.pixels;
+      const L = LANTERN;
+      const patch = px.bodies.find((b) => b.grid.w === 10 && b.grid.h === 34)!;
+      const by = (L.breach[1] + L.breach[3]) / 2;
+      const settle = (x: number, y: number, vx = 0) => {
+        patch.body.setTranslation({ x, y }, true);
+        patch.body.setRotation(0, true);
+        patch.body.setLinvel({ x: vx, y: 0 }, true);
+        patch.body.setAngvel(0, true);
+      };
+      const watch = async (ms: number, tag: string, tick?: () => void) => {
+        const out: unknown[] = [];
+        const t0 = performance.now();
+        const w0 = g.welder.welds;
+        while (performance.now() - t0 < ms) {
+          tick?.();
+          await sleep(100);
+          const d = g.welder.diag;
+          const c = patch.alive ? patch.body.translation() : { x: m(L.breach[0]) - 10 * CELL, y: 0 };
+          const cu = g.cutter as unknown as { ex: number; ey: number; hitting: boolean };
+          const tg = px.terrain.grid;
+          let wallH = 0;
+          for (let y = by - 17; y < by + 17; y++) wallH = Math.max(wallH, tg.heat[y * tg.w + L.breach[0]], tg.heat[y * tg.w + L.breach[0] + 1]);
+          let plateH = 0;
+          if (patch.alive) for (let y = 0; y < patch.grid.h; y++) plateH = Math.max(plateH, patch.grid.heat[y * patch.grid.w + patch.grid.w - 1]);
+          out.push([Math.round(performance.now() - t0), d.hotEdge, d.bestN, +(m(L.breach[0]) - (c.x + 10 * CELL)).toFixed(3), cu.hitting ? [+(cu.ex / CELL).toFixed(1), +(cu.ey / CELL).toFixed(1)] : 0, +wallH.toFixed(2), +plateH.toFixed(2)]);
+        }
+        log(tag, { welded: g.welder.welds > w0, trace: out });
+      };
+      const shiftDown = (on: boolean) => (on ? input.simulateDown('ShiftLeft') : input.simulateUp('ShiftLeft'));
+      const pin = (x: number, y: number) => () => place(m(x), m(y), 0);
+      // A) the patch resting against the wall (laid there once), the weld beam on the wall
+      // just past the plate's top corner, from a ship holding station in the hall
+      const seam = async (weld: boolean, tag: string) => {
+        settle(m(L.breach[0] - 10) - 0.02, m(by - 17), 0.2);
+        place(m(2040), m(by + 22), 0);
+        aim(m(L.breach[0]) + 0.1, m(by + 18.5));
+        await sleep(300);
+        shiftDown(weld);
+        input.simulateDown('Mouse0');
+        await watch(3000, tag, pin(2040, by + 22));
+        input.simulateUp('Mouse0');
+        shiftDown(false);
+        await watch(600, tag + '-after', pin(2040, by + 22));
+      };
+      await seam(true, 'weld-beam-seam');
+      // B) as a player does it: the arms hold a plate (the dock's spare), the ship presses it
+      // over the breach's lower rim and weld-beams the seam
+      const p2 = px.bodies.find((b) => b.grid.w === 12 && b.grid.h === 40)!;
+      const at2 = (x: number, y: number) => {
+        p2.body.setTranslation({ x, y }, true);
+        p2.body.setRotation(0, true);
+        p2.body.setLinvel({ x: 0, y: 0 }, true);
+        p2.body.setAngvel(0, true);
+      };
+      const y2 = by - 60; // the bare hall wall below the breach
+      place(m(2020), m(y2 + 20), 0);
+      at2(m(2020) + 0.9, m(y2));
+      await sleep(600);
+      if (g.arms.held === p2) {
+        const sp = g.ship.body.translation();
+        const pp = p2.body.translation();
+        const off = { x: pp.x - sp.x, y: pp.y - sp.y };
+        const sx = m(L.breach[0]) - 12 * CELL - off.x - 0.01;
+        const sy = m(y2) - off.y;
+        place(sx, sy, 0);
+        await sleep(100);
+        aim(m(L.breach[0]) + 0.1, m(y2 + 41.5));
+        shiftDown(true);
+        input.simulateDown('Mouse0');
+        const w0 = g.welder.welds;
+        const t0 = performance.now();
+        const trace: unknown[] = [];
+        while (performance.now() - t0 < 7000 && g.welder.welds === w0) {
+          place(sx, sy, 0);
+          aim(m(L.breach[0]) + 0.1, m(y2 + 41.5));
+          await sleep(100);
+          const d = g.welder.diag;
+          if (!p2.alive) break;
+          const q = p2.body.translation();
+          const cu = g.cutter as unknown as { ex: number; ey: number };
+          trace.push([Math.round(performance.now() - t0), d.hotEdge, d.bestN, +(m(L.breach[0]) - q.x - 12 * CELL).toFixed(3), +(q.y / CELL).toFixed(1), +p2.body.rotation().toFixed(3), [+(cu.ex / CELL).toFixed(1), +(cu.ey / CELL).toFixed(1)]]);
+          if (trace.length === 8) await shot('weld-held');
+        }
+        input.simulateUp('Mouse0');
+        shiftDown(false);
+        log('weld-held-seam', { welded: g.welder.welds > w0, ms: Math.round(performance.now() - t0), plateGone: !p2.alive, armsFree: g.arms.held === null, trace });
+      } else log('weld-held-seam', { held: false });
+      await sleep(300);
+      g.zoom = 40;
+      g.debugCamera = { x: m(L.breach[0]), y: m(by) };
+      await sleep(300);
+      await shot('weld');
+      g.debugCamera = null;
+    }
     if (md === 'map') {
       // knock inside Lantern's airlock chamber, let the pulse fade: the schematic stays on the
       // walls as the map, with the door motors' wiring back to the panels and the core
