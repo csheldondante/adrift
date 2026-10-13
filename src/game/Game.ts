@@ -173,7 +173,7 @@ export class Game {
         this.particles.debris(x, y, vx + (Math.random() - 0.5) * sp, vy + (Math.random() - 0.5) * sp, MAT_RGB[mat * 3] * k, MAT_RGB[mat * 3 + 1] * k, MAT_RGB[mat * 3 + 2] * k);
       },
       explosiveDestroyed: (x, y) => this.hazards.trigger(x, y),
-      terrainChanged: (r) => field.setSolidFromGrid(tg, r),
+      terrainChanged: (r, breach) => field.setSolidFromGrid(tg, r, breach),
       bodyRemoved: (b) => {
         this.grapple.onBodyRemoved(b);
         this.arms.onBodyRemoved(b);

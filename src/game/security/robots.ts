@@ -1,6 +1,14 @@
 // Robots are pixel bodies with a controller: they fly with bounded thrust (so the ship can
-// out-muscle them on a tether), see through glowing EYE cells, and die when their eyes are
-// destroyed, the body is broken up, or it is mostly cut away. Dead robots stay as wreckage.
+// out-muscle them on a tether) and are built from organs wired to a red POWER core by
+// CONDUIT (see pixel/power.ts). What still has power still works:
+//   - EYE cells: sight (vision cone, noticing the lamp, aiming)
+//   - THRUSTER cells: movement and turning, in proportion to how many are left
+//   - WEAPON cells: the gun or shock prongs
+// Armor covers the side that faces you; the back is soft. So: get behind it and drill the
+// core, or make a precision cut: sever the eye's conduit to blind it, the engine bus to strand
+// it, or the main bus to switch it off with its core intact (a battery worth stealing).
+// A robot is disabled (wreck, drifts) when its core is mostly gone, nothing works any more,
+// the body is broken up, or it's mostly cut away.
 //
 // SecurityBot: patrols its room with a vision cone; suspicion builds while it sees you and
 //   raises the alarm at full. Then it hunts (nav field) and shocks you on contact.
@@ -12,6 +20,7 @@
 import { M } from '../../pixel/materials';
 import type { PixelBody } from '../../pixel/PixelBody';
 import { PixelGrid } from '../../pixel/PixelGrid';
+import { countPowered, energize } from '../../pixel/power';
 import { VisionCone } from '../../render/VisionCone';
 import type { P } from '../level/types';
 import type { Light } from '../../render/Lighting';
@@ -19,26 +28,77 @@ import type { Security } from './Security';
 
 const tmp = { x: 0, y: 0 };
 
-export function securityBotGrid(): PixelGrid {
-  const g = new PixelGrid(16, 16);
-  for (let y = 0; y < 16; y++)
-    for (let x = 0; x < 16; x++) {
-      const d = Math.hypot(x + 0.5 - 8, y + 0.5 - 8);
-      if (d <= 8) g.set(x, y, d > 6 ? M.HULL : M.PLATE);
+/** Builds a grid from rows of art, top row first (grid y is up). Unknown chars are empty. */
+export function gridFromArt(rows: string[], legend: Record<string, number>): PixelGrid {
+  const h = rows.length;
+  const w = Math.max(...rows.map((r) => r.length));
+  const g = new PixelGrid(w, h);
+  rows.forEach((row, r) => {
+    for (let x = 0; x < row.length; x++) {
+      const m = legend[row[x]];
+      if (m) g.set(x, h - 1 - r, m);
     }
-  for (let y = 7; y < 9; y++) for (let x = 12; x < 16; x++) g.set(x, y, M.EYE); // eye faces +x
+  });
   return g;
 }
 
+const LEGEND: Record<string, number> = { A: M.ARMOR, H: M.HULL, S: M.PLATE, P: M.POWER, C: M.CONDUIT, T: M.THRUSTER, W: M.WEAPON, E: M.EYE };
+
+/**
+ * Security bot, 2.5 m, facing +x. Armored face and flanks; the eye sits in an armor plug
+ * with its bus routed around it; thrusters across the back; the core sits rear of center
+ * behind soft plate. Conduits: core -> eye, core -> each shock prong, core -> thrusters.
+ */
+export function securityBotGrid(): PixelGrid {
+  const top = [
+    '.......AAAAAA.......',
+    '.....AAAAAAAAAA.....',
+    '...HHAAAAAAAAAAAA...',
+    '..HHSSSSSSSSSSWWAA..',
+    '.HHSSSSSSSSSCCWWWAA.',
+    '.HSSSSSSSSSCCSSSSAA.',
+    'TTSSSSSSSSCCSSSSSSAA',
+    'TTSSSSSPPPCSSSSSSSAA',
+    'TTCSSSPPPPPCCCCCCCAA',
+    'TTCCCCPPPPPAAAAAACCE',
+  ];
+  return gridFromArt(
+    [...top, ...top.slice().reverse()],
+    LEGEND,
+  );
+}
+
+/**
+ * Attack drone, 2.5 × 1.5 m, facing +x. A solid armor nose with the eye set in its tip; the
+ * eye and gun bus runs back under the top armor. Thrusters and the main power bus sit at the
+ * open rear, so the engines (and then the core) are exposed from behind; cutting through the
+ * top armor into the bus blinds and disarms it.
+ */
 export function droneGrid(): PixelGrid {
-  const g = new PixelGrid(12, 8);
-  for (let y = 1; y < 7; y++) for (let x = 1; x < 11; x++) g.set(x, y, M.SCRAP);
-  for (let x = 0; x < 4; x++) {
-    g.set(x, 0, M.HULL);
-    g.set(x, 7, M.HULL); // fins
-  }
-  for (let y = 3; y < 5; y++) for (let x = 10; x < 12; x++) g.set(x, y, M.EYE);
-  return g;
+  return gridFromArt(
+    [
+      '....AAAAAAAAAAAA....',
+      '..AAAAAAAAAAAAAAAA..',
+      'TTCHHHHCCCCCCCCCCCCW',
+      'TTCHHHHCHHHHAAAAAACW',
+      '..CHHPPPPHHHAAAAAAC.',
+      '..CCPPPPPPHHAAAAAAEE',
+      '..CCPPPPPPHHAAAAAAEE',
+      '..CHHPPPPHHHAAAAAAA.',
+      'TTCHHHHHHHHHAAAAAA..',
+      'TTHHHHHHHHHHHAAAA...',
+      '..AAAAAAAAAAAAAAAA..',
+      '....AAAAAAAAAAAA....',
+    ],
+    LEGEND,
+  );
+}
+
+interface Organs {
+  power: number;
+  eye: number;
+  thruster: number;
+  weapon: number;
 }
 
 export abstract class Robot {
@@ -46,6 +106,15 @@ export abstract class Robot {
   private readonly cellsTotal: number;
   /** Facing angle the controller turns toward (radians, world). */
   heading = 0;
+  /** Working systems, from the power network. */
+  sees = true;
+  /** Fraction of thrusters still powered (scales acceleration and turning). */
+  thrust = 1;
+  armed = true;
+  /** Why it was disabled (tests, HUD). */
+  cause = '';
+  private readonly organs0: Organs;
+  private sysTick = 0;
 
   constructor(
     protected readonly sec: Security,
@@ -53,17 +122,38 @@ export abstract class Robot {
   ) {
     this.cellsTotal = pb.grid.countSolid();
     this.heading = pb.body.rotation();
+    energize(pb.grid);
+    pb.paint({ x0: 0, y0: 0, x1: pb.grid.w, y1: pb.grid.h });
+    this.organs0 = this.organs();
+  }
+
+  private organs(): Organs {
+    const g = this.pb.grid;
+    let power = 0;
+    for (let i = 0; i < g.mat.length; i++) if (g.mat[i] === M.POWER) power++;
+    return { power, eye: countPowered(g, M.EYE), thruster: countPowered(g, M.THRUSTER), weapon: countPowered(g, M.WEAPON) };
+  }
+
+  /** Re-floods the power network and updates what still works. */
+  private systems(): Organs {
+    const g = this.pb.grid;
+    if (energize(g)) this.pb.paint({ x0: 0, y0: 0, x1: g.w, y1: g.h });
+    const o = this.organs();
+    const o0 = this.organs0;
+    const lost = (this.sees && o.eye === 0) || (this.armed && o.weapon === 0) || (this.thrust > 0 && o.thruster === 0);
+    this.sees = o.eye > 0;
+    this.armed = o.weapon > 0;
+    this.thrust = o0.thruster ? o.thruster / o0.thruster : 0;
+    if (lost) {
+      // a system shorting out
+      const c = this.pos;
+      for (let k = 0; k < 6; k++) this.sec.ctx.particles.glint(c.x, c.y, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 5, 0.6, 0.8, 1, 0.07, 0.25);
+    }
+    return o;
   }
 
   get pos(): P {
     return this.pb.body.worldCom();
-  }
-
-  private eyes(): number {
-    const g = this.pb.grid;
-    let n = 0;
-    for (let i = 0; i < g.mat.length; i++) if (g.mat[i] === M.EYE) n++;
-    return n;
   }
 
   /** Flies toward a desired velocity with bounded acceleration (thrusters, not teleporting). */
@@ -77,7 +167,7 @@ export abstract class Robot {
       ax = (ax / a) * accel;
       ay = (ay / a) * accel;
     }
-    const m = b.mass();
+    const m = b.mass() * this.thrust;
     b.applyImpulse({ x: ax * m * dt, y: ay * m * dt }, true);
   }
 
@@ -87,7 +177,8 @@ export abstract class Robot {
     let err = this.heading - b.rotation();
     err = Math.atan2(Math.sin(err), Math.cos(err));
     const target = Math.max(-rate, Math.min(rate, err * 6));
-    const dw = Math.max(-accel * dt, Math.min(accel * dt, target - b.angvel()));
+    const a = accel * this.thrust;
+    const dw = Math.max(-a * dt, Math.min(a * dt, target - b.angvel()));
     b.applyTorqueImpulse(dw * b.principalInertia(), true);
   }
 
@@ -104,8 +195,17 @@ export abstract class Robot {
   /** Checks for death; returns false when the robot has just died or is dead. */
   checkAlive(): boolean {
     if (!this.alive) return false;
-    const broken = !this.pb.alive || this.eyes() === 0 || this.pb.grid.countSolid() < this.cellsTotal * 0.4;
-    if (broken) this.die();
+    if (!this.pb.alive) {
+      this.cause = 'destroyed';
+      this.die();
+      return false;
+    }
+    if (++this.sysTick % 4) return true;
+    const o = this.systems();
+    if (o.power < this.organs0.power * 0.4) this.cause = 'core';
+    else if (!this.sees && !this.armed && this.thrust === 0) this.cause = 'unpowered';
+    else if (this.pb.grid.countSolid() < this.cellsTotal * 0.4) this.cause = 'broken';
+    if (this.cause) this.die();
     return this.alive;
   }
 
@@ -156,9 +256,9 @@ export class SecurityBot extends Robot {
     const me = this.pos;
     const eye = this.eye({ x: 0, y: 0 });
     const look = this.lookAngle();
-    const seeing = ship.alive && sec.canSee(eye.x, eye.y, look, SecurityBot.HALF, SecurityBot.RANGE, this.pb);
+    const seeing = this.sees && ship.alive && sec.canSee(eye.x, eye.y, look, SecurityBot.HALF, SecurityBot.RANGE, this.pb);
     // the headlamp shining on the bot gives you away even from outside its cone
-    const lit = !seeing && this.state !== 'hunt' && sec.litByLamp(eye.x, eye.y, this.pb);
+    const lit = this.sees && !seeing && this.state !== 'hunt' && sec.litByLamp(eye.x, eye.y, this.pb);
     const toShip = Math.atan2(ship.y - me.y, ship.x - me.x);
     const dShip = Math.hypot(ship.x - me.x, ship.y - me.y);
 
@@ -184,7 +284,7 @@ export class SecurityBot extends Robot {
       else this.steer(0, 0, 4, dt);
       this.heading = seeing ? toShip : dir ? Math.atan2(dir.y, dir.x) : this.heading;
       // shock on contact
-      if (ship.alive && dShip < 2.3) {
+      if (this.armed && ship.alive && dShip < 2.7) {
         ship.damage(18 * dt, 'shocked');
         if (Math.random() < 0.5) {
           const k = Math.random();
@@ -211,7 +311,7 @@ export class SecurityBot extends Robot {
   }
 
   frameUpdate(): void {
-    if (!this.alive) {
+    if (!this.alive || !this.sees) {
       this.cone.hide();
       return;
     }
@@ -228,7 +328,7 @@ export class SecurityBot extends Robot {
   }
 
   addLights(out: Light[]): void {
-    if (!this.alive) return;
+    if (!this.alive || !this.sees) return;
     const eye = this.eye({ x: 0, y: 0 });
     const look = this.lookAngle();
     const hunting = this.state === 'hunt';
@@ -255,7 +355,7 @@ export class Drone extends Robot {
     const dx = ship.x - me.x;
     const dy = ship.y - me.y;
     const d = Math.hypot(dx, dy) || 1;
-    const los = ship.alive && d < 30 && sec.canSee(me.x, me.y, Math.atan2(dy, dx), Math.PI, 30, this.pb);
+    const los = this.sees && ship.alive && d < 30 && sec.canSee(me.x, me.y, Math.atan2(dy, dx), Math.PI, 30, this.pb);
     if (los) sec.spotted({ x: ship.x, y: ship.y });
     if (!sec.alert) {
       this.steer(0, 0, 4, dt); // idle hover
@@ -270,7 +370,7 @@ export class Drone extends Robot {
       this.steer(tx, ty, 9, dt);
       this.heading = Math.atan2(dy, dx);
       this.cooldown -= dt;
-      if (this.cooldown <= 0 && Math.abs(Math.atan2(Math.sin(this.heading - this.lookAngle()), Math.cos(this.heading - this.lookAngle()))) < 0.25) {
+      if (this.armed && this.cooldown <= 0 && Math.abs(Math.atan2(Math.sin(this.heading - this.lookAngle()), Math.cos(this.heading - this.lookAngle()))) < 0.25) {
         this.cooldown = 0.9 + Math.random() * 0.4;
         const eye = this.eye({ x: 0, y: 0 });
         // lead the target a little

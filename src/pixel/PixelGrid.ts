@@ -42,6 +42,8 @@ export class PixelGrid {
   readonly shade: Uint8Array;
   /** Per-cell heat (0..MAX_HEAT): glows, conducts, gates beam damage (burn point) and welds. */
   readonly heat: Float32Array;
+  /** Per-cell power: 1 where a conducting cell is connected to a power core (pixel/power.ts). */
+  readonly powered: Uint8Array;
 
   constructor(
     readonly w: number,
@@ -51,6 +53,7 @@ export class PixelGrid {
     this.hp = new Float32Array(w * h);
     this.shade = new Uint8Array(w * h);
     this.heat = new Float32Array(w * h);
+    this.powered = new Uint8Array(w * h);
   }
 
   inside(x: number, y: number): boolean {
@@ -121,6 +124,7 @@ export class PixelGrid {
           }
           this.mat[i] = M.EMPTY;
           this.hp[i] = 0;
+          this.powered[i] = 0;
           res.removed = growRect(res.removed, x, y);
         }
       }
@@ -135,6 +139,7 @@ export class PixelGrid {
       this.mat[i] = M.EMPTY;
       this.hp[i] = 0;
       this.heat[i] = 0;
+      this.powered[i] = 0;
     }
   }
 

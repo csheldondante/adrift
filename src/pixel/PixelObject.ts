@@ -123,7 +123,7 @@ export abstract class PixelObject implements PhysOwner {
     const g = this.grid;
     const m = g.mat[i];
     const max = MAT_HP[m];
-    this.pixels[i] = cellColor(m, g.shade[i], max > 0 ? g.hp[i] / max : 1, g.heat[i]);
+    this.pixels[i] = cellColor(m, g.shade[i], max > 0 ? g.hp[i] / max : 1, g.heat[i], g.powered[i]);
     const x = i % g.w;
     const y = (i - x) / g.w;
     this.view.markDirty(x, y, x + 1, y + 1);
@@ -141,7 +141,7 @@ export abstract class PixelObject implements PhysOwner {
         const i = y * grid.w + x;
         const m = grid.mat[i];
         const max = MAT_HP[m];
-        pixels[i] = cellColor(m, grid.shade[i], max > 0 ? grid.hp[i] / max : 1, grid.heat[i]);
+        pixels[i] = cellColor(m, grid.shade[i], max > 0 ? grid.hp[i] / max : 1, grid.heat[i], grid.powered[i]);
       }
     }
     this.view.markDirty(x0, y0, x1, y1);

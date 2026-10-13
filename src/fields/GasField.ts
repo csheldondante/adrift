@@ -61,6 +61,8 @@ export class GasField {
   private readonly solidAttr: THREE.StorageBufferAttribute;
   private readonly injectAttr: THREE.StorageBufferAttribute;
   private readonly solidCpu: Float32Array;
+  /** Field cells whose matter has been cut or blasted (see setSolidFromGrid). */
+  private readonly breached: Uint8Array;
   private readonly injectCpu: Float32Array;
   private solidRows: [number, number] | null = null; // field rows needing upload
   private injRows: [number, number] | null = null;
@@ -96,6 +98,7 @@ export class GasField {
     const nextAttr = new THREE.StorageBufferAttribute(new Float32Array(n * 4), 4);
     this.facesAttr = new THREE.StorageBufferAttribute(new Float32Array(n * 4), 4);
     this.solidCpu = new Float32Array(n);
+    this.breached = new Uint8Array(n);
     this.solidAttr = new THREE.StorageBufferAttribute(this.solidCpu, 1);
     this.injectCpu = new Float32Array(n * 4);
     this.injectAttr = new THREE.StorageBufferAttribute(this.injectCpu, 4);
@@ -227,6 +230,7 @@ export class GasField {
     this.facesAttr.needsUpdate = true;
     this.injectCpu.fill(0);
     this.solidCpu.fill(0);
+    this.breached.fill(0);
     this.injRows = [0, this.h - 1];
     this.solidRows = [0, this.h - 1];
     this.readState = null;
@@ -238,22 +242,31 @@ export class GasField {
     return r ? [Math.min(r[0], y0), Math.max(r[1], y1)] : [y0, y1];
   }
 
-  /** Recomputes the wall mask for field cells overlapping a pixel-cell rect. */
-  setSolidFromGrid(grid: PixelGrid, r: Rect): void {
+  /**
+   * Recomputes the wall mask for field cells overlapping a pixel-cell rect.
+   *
+   * A field cell (8×8 pixels) is a wall while at least half its pixels are solid, so walls
+   * 7+ pixels thick always seal. That alone would let a cut narrower than a field cell, or
+   * one straddling two, leave both cells "half solid" and never vent. So cells that have been
+   * cut or blasted (breach = true) only stay walls while nearly full (7/8). A notch that
+   * doesn't go through still seals, because the cells deeper in the wall are intact.
+   */
+  setSolidFromGrid(grid: PixelGrid, r: Rect, breach = false): void {
     const fx0 = Math.max(0, Math.floor(r.x0 / FIELD_SCALE));
     const fy0 = Math.max(0, Math.floor(r.y0 / FIELD_SCALE));
     const fx1 = Math.min(this.w, Math.ceil(r.x1 / FIELD_SCALE));
     const fy1 = Math.min(this.h, Math.ceil(r.y1 / FIELD_SCALE));
     if (fx1 <= fx0 || fy1 <= fy0) return;
     const half = (FIELD_SCALE * FIELD_SCALE) / 2;
+    const nearlyFull = (FIELD_SCALE * FIELD_SCALE * 7) / 8;
     for (let fy = fy0; fy < fy1; fy++) {
       for (let fx = fx0; fx < fx1; fx++) {
+        if (breach) this.breached[fy * this.w + fx] = 1;
         let solid = 0;
         for (let y = fy * FIELD_SCALE; y < (fy + 1) * FIELD_SCALE && y < grid.h; y++)
           for (let x = fx * FIELD_SCALE; x < (fx + 1) * FIELD_SCALE && x < grid.w; x++)
             if (MAT_FLAGS[grid.mat[y * grid.w + x]] & F.SOLID) solid++;
-        // a field cell stays a wall until more than half its pixels are open
-        this.solidCpu[fy * this.w + fx] = solid >= half ? 1 : 0;
+        this.solidCpu[fy * this.w + fx] = solid >= (this.breached[fy * this.w + fx] ? nearlyFull : half) ? 1 : 0;
       }
     }
     this.solidRows = GasField.grow(this.solidRows, fy0, fy1 - 1);

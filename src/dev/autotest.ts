@@ -48,7 +48,7 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
   };
 
   await sleep(800);
-  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'laser', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope', 'walk', 'arms', 'sound', 'heat'] : mode.split(',');
+  const modes = mode === 'all' ? ['fly', 'turn', 'brake', 'drift', 'crash', 'laser', 'hook', 'clamp', 'glow', 'impact', 'cut', 'vent', 'boom', 'grapple', 'rope', 'walk', 'arms', 'sound', 'heat', 'organs'] : mode.split(',');
   for (const md of modes) {
     restart();
     await sleep(300);
@@ -501,6 +501,62 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       await sleep(100);
       log('click release', { attachedBefore: st, after: g.grapple.state });
     }
+    if (md === 'bots') {
+      // robot health over the first seconds of a level (spawn sanity)
+      const g = game();
+      for (let k = 0; k < 6; k++) {
+        log('bots', g.security.robots.map((r) => [r.alive ? 1 : 0, r.cause, r.pb.alive ? 1 : 0, r.sees ? 1 : 0, +r.thrust.toFixed(2)]));
+        await sleep(500);
+      }
+    }
+    if (md === 'organs') {
+      // drones are armored at the nose and soft at the back, and their organs need power
+      const g = game();
+      const sec = g.security;
+      const state = (d: ReturnType<typeof sec.spawnDrone>) => ({ alive: d.alive, cause: d.cause, sees: d.sees, armed: d.armed, thrust: +d.thrust.toFixed(2), speed: d.pb.alive ? +Math.hypot(d.pb.body.linvel().x, d.pb.body.linvel().y).toFixed(2) : -1 });
+      const burnAt = async (d: ReturnType<typeof sec.spawnDrone>, fromX: number, ms: number) => {
+        g.cutter.heat = 0;
+        const t0 = performance.now();
+        let deadMs = -1;
+        await hold('Mouse0', ms, () => {
+          if (!d.pb.alive) return;
+          const c = d.pb.body.worldCom();
+          place(fromX, c.y, fromX < c.x ? 0 : Math.PI);
+          aim(c.x, c.y);
+          if (deadMs < 0 && !d.alive) deadMs = Math.round(performance.now() - t0);
+        });
+        return deadMs;
+      };
+      // 1) from the front: the armor holds (the exposed eye may go)
+      const a = sec.spawnDrone(25, 30, 0);
+      await sleep(200);
+      const frontDead = await burnAt(a, 33, 1500);
+      log('organs-front', { ...state(a), deadMs: frontDead, laserHeat: +g.cutter.heat.toFixed(2) });
+      if (a.pb.alive) a.pb.body.setTranslation({ x: 25, y: 80 }, true);
+      await sleep(2500);
+      // 2) from behind: thrusters, the power bus, then the core
+      const b = sec.spawnDrone(25, 50, 0);
+      await sleep(200);
+      const rearDead = await burnAt(b, 17, 2500);
+      log('organs-rear', { ...state(b), deadMs: rearDead, laserHeat: +g.cutter.heat.toFixed(2) });
+      if (b.pb.alive) b.pb.body.setTranslation({ x: 25, y: 100 }, true);
+      // 3) a precision cut: sever the eye's conduit only; it goes blind but still flies
+      const c = sec.spawnDrone(25, 70, 0);
+      await sleep(200);
+      const cg = c.pb.grid;
+      cg.damageCircle(12.5, 9.5, 0.9, 1000); // one conduit cell on the eye/gun bus under the top armor
+      c.pb.paint({ x0: 0, y0: 0, x1: cg.w, y1: cg.h });
+      c.pb.needsSplitCheck = true;
+      await sleep(300);
+      log('organs-snip', state(c));
+      // close-up of a fresh drone in the lamp, and of the snipped one
+      sec.spawnDrone(29, 73, Math.PI);
+      place(21, 71.5, 0);
+      aim(29, 72);
+      g.zoom = 12;
+      await sleep(400);
+      await shot('organs');
+    }
     if (md === 'heat') {
       // 1) the beam on a hull block vs an armor block in open space: hull gives quickly,
       //    armor glows white first and works the laser harder
@@ -665,31 +721,36 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
       // in front of a security bot's eye: alarm. Behind it, dark: no alarm. Behind it with the
       // headlamp shining on it: it notices the light and turns (alarm).
       const g = game();
-      const bot = g.security.robots.find((r) => r.pb.tags.label === 'securityBot')!;
       const front = md === 'spot';
       g.ship.lampOn = md !== 'sneak';
       const t0 = performance.now();
       let tAlarm = -1;
       let maxSusp = 0;
-      // park once on a free spot 7 m in front of (or behind) the eye, then keep hands off
-      const c = bot.pos;
-      const a = bot.pb.body.rotation() + (front ? 0 : Math.PI);
-      // nearest angle to the preferred one with a clear line and an empty ship-sized footprint
+      // park once on a free spot 7 m in front of (or behind) a bot's eye, then keep hands off.
+      // Pick the first bot with a clear line and an empty ship-sized footprint within ±0.4 rad
+      // of straight ahead (or behind).
       const grid = g.pixels.terrain.grid;
       const roomy = (x: number, y: number) => {
         for (let oy = -1.6; oy <= 1.6; oy += 0.4) for (let ox = -1.6; ox <= 1.6; ox += 0.4) if (grid.solid(Math.floor((x + ox) / CELL), Math.floor((y + oy) / CELL))) return false;
         return true;
       };
       let ang = NaN;
-      for (let k = 0; k < 48; k++) {
-        const t = a + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.13;
-        if (!g.pixels.raycast(c.x, c.y, Math.cos(t), Math.sin(t), 8.5, bot.pb) && roomy(c.x + Math.cos(t) * 7, c.y + Math.sin(t) * 7)) {
-          ang = t;
-          break;
+      let c = { x: 0, y: 0 };
+      for (const r of g.security.robots) {
+        if (r.pb.tags.label !== 'securityBot' || !r.alive || !r.sees) continue;
+        c = r.pos;
+        const a = r.pb.body.rotation() + (front ? 0 : Math.PI);
+        for (let k = 0; k < 7; k++) {
+          const t = a + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.13;
+          if (!g.pixels.raycast(c.x, c.y, Math.cos(t), Math.sin(t), 8.5, r.pb) && roomy(c.x + Math.cos(t) * 7, c.y + Math.sin(t) * 7)) {
+            ang = t;
+            break;
+          }
         }
+        if (!Number.isNaN(ang)) break;
       }
       if (Number.isNaN(ang)) {
-        log(md, { skipped: 'no free spot near the bot' });
+        log(md, { skipped: 'no free spot near a bot' });
         continue;
       }
       place(c.x + Math.cos(ang) * 7, c.y + Math.sin(ang) * 7, ang + Math.PI);

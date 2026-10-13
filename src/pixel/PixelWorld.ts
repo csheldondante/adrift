@@ -24,8 +24,8 @@ export interface PixelWorldEvents {
   cellDestroyed?(wx: number, wy: number, mat: number, shade: number, vx: number, vy: number): void;
   /** An explosive cell was destroyed (by any cause). */
   explosiveDestroyed?(wx: number, wy: number): void;
-  /** Terrain solidity changed in this cell rect (for the gas field's wall mask). */
-  terrainChanged?(r: Rect): void;
+  /** Terrain solidity changed in this cell rect (for the gas field's wall mask); breach = matter was cut or blasted away. */
+  terrainChanged?(r: Rect, breach: boolean): void;
   bodyRemoved?(b: PixelBody): void;
 }
 
@@ -144,7 +144,7 @@ export class PixelWorld {
       this.terrain.paint(r);
       this.terrain.markCollidersDirty(r);
       this.pendingTerrainCuts.push(r);
-      this.events.terrainChanged?.(r);
+      this.events.terrainChanged?.(r, false);
     }
     this.removeBody(b);
   }
@@ -290,7 +290,7 @@ export class PixelWorld {
       const r = { x0, y0, x1, y1 };
       this.terrain.paint(r);
       this.terrain.markCollidersDirty(r);
-      this.events.terrainChanged?.(r);
+      this.events.terrainChanged?.(r, false);
     }
     return n;
   }
@@ -323,7 +323,7 @@ export class PixelWorld {
       if (o === this.terrain) {
         this.terrain.markCollidersDirty(res.removed);
         this.pendingTerrainCuts.push(res.removed);
-        this.events.terrainChanged?.(res.removed);
+        this.events.terrainChanged?.(res.removed, true);
       } else {
         (o as PixelBody).needsSplitCheck = true;
       }
@@ -505,7 +505,7 @@ export class PixelWorld {
     src.paint(rect);
     if (src === this.terrain) {
       this.terrain.markCollidersDirty(rect);
-      this.events.terrainChanged?.(rect);
+      this.events.terrainChanged?.(rect, true);
     }
   }
 

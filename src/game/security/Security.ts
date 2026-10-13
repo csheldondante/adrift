@@ -29,6 +29,7 @@ const SEAL_RADIUS = 48; // m from the alarm point
 const BAY_RADIUS = 140;
 const DRONES_PER_BAY = 3;
 const MAX_DRONES = 12;
+const BOT_CLEARANCE = 1.5; // m of free space a bot needs around its spawn and patrol points
 
 interface SealingDoor {
   d: DoorSpec;
@@ -58,8 +59,11 @@ export class Security {
     for (const e of entities) {
       if (e.type === 'securityBot') {
         const grid = securityBotGrid();
-        const pb = ctx.pixels.addBody(grid, { x: e.x - (grid.w * CELL) / 2, y: e.y - (grid.h * CELL) / 2, tags: { label: 'securityBot' } });
-        this.robots.push(new SecurityBot(this, pb, e.patrol));
+        // the generator places patrols by room rect; furniture can sit on those points
+        const patrol = e.patrol.map((p) => this.freeSpot(p.x, p.y, BOT_CLEARANCE));
+        const at = patrol[0];
+        const pb = ctx.pixels.addBody(grid, { x: at.x - (grid.w * CELL) / 2, y: at.y - (grid.h * CELL) / 2, tags: { label: 'securityBot' } });
+        this.robots.push(new SecurityBot(this, pb, patrol));
       } else if (e.type === 'turret') {
         this.turrets.push(new Turret(this, e.x, e.y, e.dir));
       } else if (e.type === 'droneBay') {
@@ -67,6 +71,28 @@ export class Security {
       }
     }
     this.nav = new NavField(ctx.pixels.terrain.grid);
+  }
+
+  /** Nearest point to (x, y), searching outward up to 10 m, with no terrain within radius r. */
+  freeSpot(x: number, y: number, r: number): P {
+    const g = this.ctx.pixels.terrain.grid;
+    const clear = (px: number, py: number) => {
+      const rc = r / CELL;
+      const cx = px / CELL;
+      const cy = py / CELL;
+      for (let yy = Math.floor(cy - rc); yy <= Math.ceil(cy + rc); yy++)
+        for (let xx = Math.floor(cx - rc); xx <= Math.ceil(cx + rc); xx++) if ((xx + 0.5 - cx) ** 2 + (yy + 0.5 - cy) ** 2 <= rc * rc && g.solid(xx, yy)) return false;
+      return true;
+    };
+    if (clear(x, y)) return { x, y };
+    for (let d = 0.5; d <= 10; d += 0.5)
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2;
+        const px = x + Math.cos(a) * d;
+        const py = y + Math.sin(a) * d;
+        if (clear(px, py)) return { x: px, y: py };
+      }
+    return { x, y };
   }
 
   /** Highest suspicion among bots and sentry turrets (for the HUD's "being watched" meter). */
@@ -178,13 +204,25 @@ export class Security {
       if (b.next <= 0 || b.launched >= DRONES_PER_BAY || live >= MAX_DRONES) continue;
       b.next -= dt;
       if (b.next > 0) continue;
-      const grid = droneGrid();
-      const pb = this.ctx.pixels.addBody(grid, { x: b.x - (grid.w * CELL) / 2, y: b.y - (grid.h * CELL) / 2, tags: { label: 'drone' } });
-      this.robots.push(new Drone(this, pb));
+      this.spawnDrone(b.x, b.y);
       b.launched++;
       b.next = b.launched < DRONES_PER_BAY ? 0.7 : 0;
       for (let k = 0; k < 8; k++) this.ctx.particles.glint(b.x, b.y, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, 1, 0.4, 0.3, 0.3, 0.1);
     }
+  }
+
+  /** Launches an attack drone centered at (x, y), facing `angle`. */
+  spawnDrone(x: number, y: number, angle = 0): Drone {
+    const grid = droneGrid();
+    const hw = (grid.w * CELL) / 2;
+    const hh = (grid.h * CELL) / 2;
+    // the body origin is the grid corner: rotate the half extents so the center lands on (x, y)
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    const pb = this.ctx.pixels.addBody(grid, { x: x - (c * hw - s * hh), y: y - (s * hw + c * hh), angle, tags: { label: 'drone' } });
+    const d = new Drone(this, pb);
+    this.robots.push(d);
+    return d;
   }
 
   frameUpdate(): void {

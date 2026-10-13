@@ -8,7 +8,7 @@
 import { CELL } from '../config';
 import type { PixelGrid } from './PixelGrid';
 import type { PixelWorld } from './PixelWorld';
-import { F, M, MAT_FLAGS, MAT_RGB } from './materials';
+import { F, glows, M, MAT_FLAGS, MAT_RGB } from './materials';
 
 /** Where the derelict's interior is (non-zero = over the back wall). */
 export interface InteriorMask {
@@ -26,7 +26,7 @@ function sampleCell(g: PixelGrid, cx: number, cy: number, out: Float32Array, k: 
   const m = g.mat[ci];
   if (m === 0) return;
   if (occlusion && OCCLUDES[m] && out[k + 3] % 2 < 1) out[k + 3] += 1;
-  if (EMITS[m]) {
+  if (EMITS[m] && glows(m, g.powered[ci])) {
     const s = 0.9 * weight;
     out[k] += (MAT_RGB[m * 3] / 255) * s;
     out[k + 1] += (MAT_RGB[m * 3 + 1] / 255) * s;
@@ -41,12 +41,12 @@ function sampleCell(g: PixelGrid, cx: number, cy: number, out: Float32Array, k: 
   }
 }
 
-// per-material lookups: occludes light, and emitted rgb (fixtures stay dark: unpowered)
+// per-material lookups: occludes light, and may emit (only while powered, see glows())
 const OCCLUDES = new Uint8Array(256);
 const EMITS = new Uint8Array(256);
 for (let m = 1; m < 256; m++) {
   OCCLUDES[m] = MAT_FLAGS[m] & F.SOLID && m !== M.GLASS ? 1 : 0;
-  EMITS[m] = MAT_FLAGS[m] & F.EMISSIVE && m !== M.LIGHT ? 1 : 0;
+  EMITS[m] = MAT_FLAGS[m] & F.EMISSIVE ? 1 : 0;
 }
 let colsA = new Int32Array(0);
 let colsB = new Int32Array(0);

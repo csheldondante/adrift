@@ -24,6 +24,10 @@ export const M = {
   BULKHEAD: 12, // emergency door slab: tough
   TURRET: 13, // wall turret housing
   ARMOR: 14, // refractory plating: must glow white before it burns, works the laser hard
+  POWER: 15, // power cell / reactor core: the source of a power network (always energized)
+  CONDUIT: 16, // power bus: carries power between cells that conduct
+  THRUSTER: 17, // robot engine block: works while powered
+  WEAPON: 18, // robot gun / shock prongs: works while powered
 } as const;
 export type MaterialId = (typeof M)[keyof typeof M];
 
@@ -31,7 +35,8 @@ export const F = {
   SOLID: 1,
   ANCHOR: 2, // terrain containing this cannot detach
   EXPLOSIVE: 4,
-  EMISSIVE: 8,
+  EMISSIVE: 8, // glows while powered (POWER itself always glows)
+  CONDUCTS: 16, // part of a power network (see pixel/power.ts)
 } as const;
 
 interface MaterialDef {
@@ -62,10 +67,14 @@ const DEFS: MaterialDef[] = [
   { id: M.LIGHT, name: 'light', color: [255, 214, 140], variation: 0.05, hp: 20, armor: 1, density: 30, flags: F.SOLID | F.EMISSIVE, burn: 0.3, spark: 0.5 },
   { id: M.PISTON, name: 'piston', color: [138, 142, 152], variation: 0.06, hp: 400, armor: 1, density: 200, flags: F.SOLID, burn: 1.05, heatCap: 2.6, cool: 0.18, spark: 2.5, load: 2.8 },
   { id: M.STRIPE, name: 'stripe', color: [214, 172, 40], variation: 0.05, hp: 400, armor: 1, density: 200, flags: F.SOLID, burn: 1.05, heatCap: 2.6, cool: 0.18, spark: 2.5, load: 2.8 },
-  { id: M.EYE, name: 'eye', color: [255, 60, 50], variation: 0.08, hp: 10, armor: 1, density: 30, flags: F.SOLID | F.EMISSIVE, burn: 0.3, spark: 0.5 },
+  { id: M.EYE, name: 'eye', color: [255, 196, 90], variation: 0.08, hp: 10, armor: 1, density: 30, flags: F.SOLID | F.EMISSIVE | F.CONDUCTS, burn: 0.3, spark: 0.5 },
   { id: M.BULKHEAD, name: 'bulkhead', color: [150, 132, 70], variation: 0.08, hp: 160, armor: 1, density: 90, flags: F.SOLID, burn: 0.85, heatCap: 1.6, cool: 0.22, spark: 2, load: 1.8 },
   { id: M.TURRET, name: 'turret', color: [70, 76, 92], variation: 0.1, hp: 70, armor: 1, density: 80, flags: F.SOLID, burn: 0.55, spark: 1.2 },
-  { id: M.ARMOR, name: 'armor', color: [52, 56, 66], variation: 0.05, hp: 140, armor: 1, density: 110, flags: F.SOLID, burn: 0.95, heatCap: 2.0, cool: 0.16, spark: 3, load: 2.2 },
+  { id: M.POWER, name: 'power core', color: [235, 30, 42], variation: 0.1, hp: 30, armor: 1, density: 70, flags: F.SOLID | F.EMISSIVE | F.CONDUCTS, burn: 0.35, spark: 0.6 },
+  { id: M.CONDUIT, name: 'conduit', color: [196, 112, 52], variation: 0.08, hp: 18, armor: 1, density: 60, flags: F.SOLID | F.CONDUCTS, burn: 0.3, spark: 1.5 },
+  { id: M.THRUSTER, name: 'thruster', color: [74, 92, 132], variation: 0.08, hp: 45, armor: 1, density: 70, flags: F.SOLID | F.CONDUCTS, burn: 0.45, spark: 1.2 },
+  { id: M.WEAPON, name: 'weapon', color: [150, 64, 170], variation: 0.08, hp: 45, armor: 1, density: 70, flags: F.SOLID | F.CONDUCTS, burn: 0.45, spark: 1.2 },
+  { id: M.ARMOR, name: 'armor', color: [52, 56, 66], variation: 0.05, hp: 320, armor: 1, density: 110, flags: F.SOLID, burn: 0.95, heatCap: 2.5, cool: 0.16, spark: 3, load: 2.5 },
 ];
 
 /** Hottest a cell gets (white heat). Burn points must sit below it. */
@@ -101,11 +110,18 @@ for (const d of DEFS) {
 
 export const isSolidMat = (m: number) => (MAT_FLAGS[m] & F.SOLID) !== 0;
 
-/** Packs a cell's display color (RGBA, little-endian ABGR uint32) from material, shade noise, and damage. */
-export function cellColor(mat: number, shade: number, hpFrac: number, heat = 0): number {
+/** Does this cell emit light? Emissive materials glow only while powered; a power core always does. */
+export const glows = (mat: number, powered: number) => (MAT_FLAGS[mat] & F.EMISSIVE) !== 0 && (powered !== 0 || mat === M.POWER);
+
+/**
+ * Packs a cell's display color (RGBA, little-endian ABGR uint32) from material, shade noise,
+ * damage, heat, and power (unpowered emissive cells are dark).
+ */
+export function cellColor(mat: number, shade: number, hpFrac: number, heat = 0, powered = 0): number {
   if (mat === M.EMPTY) return 0;
   const v = MAT_VAR[mat];
   let k = 1 + (shade / 255 - 0.5) * 2 * v;
+  if (MAT_FLAGS[mat] & F.EMISSIVE && !glows(mat, powered)) k *= 0.4;
   // damaged cells darken and pick up a scorched tint
   const dmg = 1 - Math.min(1, Math.max(0, hpFrac));
   k *= 1 - dmg * 0.45;

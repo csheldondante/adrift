@@ -161,7 +161,12 @@ export function droneBay(c: RoomCtx): void {
   ceilingLights(c);
 }
 
-/** A security bot walking a loop around the room (clockwise or not). */
+const botsInRoom = new WeakMap<RoomCtx, number>();
+
+/**
+ * A security bot walking a loop around the room (clockwise or not). A second bot in the same
+ * room starts at the opposite corner, so they never spawn inside each other.
+ */
 export function addPatrolBot(c: RoomCtx): void {
   const { r, rng } = c;
   const inset = 30;
@@ -172,6 +177,9 @@ export function addPatrolBot(c: RoomCtx): void {
     { x: m(r.x0 + inset), y: m(r.y1 - inset) },
   ];
   if (rng.chance(0.5)) patrol.reverse();
+  const n = botsInRoom.get(c) ?? 0;
+  botsInRoom.set(c, n + 1);
+  for (let k = 0; k < n * 2; k++) patrol.push(patrol.shift()!);
   c.addEntity({ type: 'securityBot', x: patrol[0].x, y: patrol[0].y, patrol, roomId: c.id });
 }
 

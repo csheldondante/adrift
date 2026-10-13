@@ -61,7 +61,7 @@ export const tune = {
     maxStretch: 0.15, // hard limit beyond the spring
   },
   cutter: {
-    radius: 0.55, // m
+    radius: 0.35, // m (kerf ≈ 0.7 m: narrow enough to pick out a robot's parts)
     damagePerSecond: 650, // hp/s at beam center, once a cell is past its burn point
     range: 200, // m (effectively unlimited; the raycast stops at the first solid pixel)
     heat: 0.9, // gas-field heat injected per second

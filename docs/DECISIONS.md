@@ -2,6 +2,51 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-12 — Robots have organs on a power network (milestone B)
+
+Playtest: the cutter was overpowered against enemies. The fun was in precision cuts: cutting a door free, or drilling to a drone's red core so it drifts. Enemies should have several vulnerable parts (engines, weapons, sensors) shielded from some angles by material that takes more heat.
+
+**Decision:** robots are built from organs, and a per-cell power layer decides what works.
+- **New materials:**
+  - `POWER`: the red core. It is the power source and always glows.
+  - `CONDUIT`: copper bus that carries power.
+  - `THRUSTER`
+  - `WEAPON`
+  - `EYE`, which now also conducts.
+- **`pixel/power.ts` `energize(grid)`** floods outward from the `POWER` cells through the cells that conduct, into `grid.powered`. A robot re-floods its own grid every 4 steps.
+- **What each organ does while powered:**
+  - Eyes give sight: the vision cone, noticing the lamp, and aiming.
+  - The fraction of thrusters still powered scales acceleration and turning.
+  - Weapon cells are the gun or the shock prongs.
+- **A robot is disabled** (`cause`) and becomes a drifting wreck when:
+  - the core drops below 40%;
+  - nothing works any more (unpowered);
+  - the body breaks up; or
+  - it is mostly cut away.
+- **The layouts are ASCII art** (`gridFromArt`) and readable at a glance:
+  - Both robots have an armored front.
+  - The eye sits in an armor plug, with its bus routed around it, so a frontal beam can't drill down a soft channel. The first layout made that mistake, and the test caught it: a frontal kill in 0.8 s.
+  - Thrusters and the main bus sit at the soft back.
+- **What precision cuts do:**
+  - Sever the forward bus and the drone is blind and unarmed, but still flying.
+  - Cut the engine bus and it is stranded.
+  - Drill in from behind and the core dies in about 0.5 s.
+  - From the front, the armor overheats the laser first: about 0.8 heat in 1.5 s, which only blinds it.
+- **`grid.powered` also gates emissive glow** (`glows()`), in both the pixel colors and the lightmap. An unpowered eye goes dark, so you can see that a cut worked. Milestone C reuses the same layer to light the derelict's fixtures once a section is re-powered.
+
+**Supporting changes:**
+- **Beam radius 0.55 → 0.35 m.** The old beam was as tall as a drone, so precision cuts were impossible.
+- **Armor:** 320 hp, heat capacity 2.5, load 2.5.
+- **Gas wall mask, breached cells.** A kerf narrower than a field cell, or one straddling two, used to leave both cells over half solid, so the cut never vented. That nearly broke decompression: the vent test kept 0.73 of its gas. Cells that are cut or blasted now stay walls only while at least 7/8 full. Untouched walls keep the half rule, so thin walls still seal. The vent test is back to 0.12.
+- **Spawn fix:** 4 of 14 dungeon bots (seed 3) spawned inside furniture or walls and blew apart. Spawn and patrol points now move to the nearest spot with 1.5 m clearance (`Security.freeSpot`). A second bot in a room starts at the opposite corner.
+- **Test fix:** the spot/sneak/lit tests now pick a bot whose line of sight ahead (or behind) is clear.
+
+**Why one power layer for everything:** the pixels are the only state. A cut conduit really disconnects whatever is past it. A robot's systems, its glow, and later the derelict's lights, doors and pressure all read the same flood, so none of them can disagree with the matter.
+
+**Revisit if:**
+- Robots feel too easy to sneak up on. Bots turn toward any sighting at 4 rad/s, and getting behind one needs stealth or the grapple, which is the intent.
+- Re-flooding many robots becomes a cost. It is O(cells), about 400 cells per robot, every 4 steps.
+
 ## 2026-10-12 — Heat is physical: burn points, conduction, welding (milestone A)
 
 Playtest: the cutter is the best toy, but it was an eraser. Uncuttable material was annoying, especially in the dark where you can't tell what's what. The user asked for things to glow longer, for some materials to spark, for tough material that has to glow before it burns, and for welding by pressing hot pieces together.

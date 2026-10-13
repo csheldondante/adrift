@@ -43,6 +43,8 @@ The top-left minimap reveals the ship as you explore. It always shows you (white
 | H | Hide help |
 | ` | Tuning / debug panel |
 
+Robots are built from organs wired to a red power core: eyes (sight), thrusters (movement), and guns or shock prongs. Armor covers the front. Get behind one and drill the core, or cut a conduit to blind it, strand it, or switch it off.
+
 ## Architecture
 
 ```
