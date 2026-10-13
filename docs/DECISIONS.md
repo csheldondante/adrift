@@ -2,6 +2,45 @@
 
 This file records why things are the way they are: tradeoffs, rejected alternatives and user directives that the code alone can't show. Newest entries go at the top. Each entry is one decision.
 
+## 2026-10-12 — Power and pressure in the walls; the lab station (milestone C)
+
+Playtest asks:
+- Puzzles about restoring power, which can wake sensors or open doors, and can light things up.
+- Using the weld to seal a breach, then restoring power to pressurize a room so a pressure-sensitive door opens.
+- Pressure doors that are hard to cut through but open when you pressurize the chamber.
+- Taking power from enemies with the grapple and putting it into the ship.
+
+**Decision:** the terrain carries a power network made of matter, with three device types that read it.
+- **`PowerNet`** floods `terrain.grid.powered` outward from two kinds of source, through conducting cells only (`energizeFrom`). The cost is the size of the network, not the 8M-cell grid.
+  - Built-in `POWER` cells.
+  - Live `SOCKET` cells. A socket is live while a powered conductor of a loose body is within two cells of its open face. That body can be a battery prop, or a robot core you've cut free and hauled over, since `POWER` conducts and is its own source. That is the "steal power from enemies" path, and it falls out of the model with no extra code.
+  - The network re-floods on any terrain change, and checks the sockets every 10 steps. Loose bodies that carry power energize themselves.
+- **Consumers:**
+  - `LIGHT` now conducts. Powered fixtures glow through the existing `glows()`, and each cluster casts an omni light (`PowerNet.lights`).
+  - `PUMP` cells pour air in at an outlet up to a target.
+  - Doors slide open while their motor cell is powered.
+  - **Pressure doors** (new `PDOOR` material: burn 1.1, 650 hp, load 3, the toughest thing that can still be cut) open while their chamber's sensor reads at least 0.6 gas, and close below 0.3.
+- **Doors move by painting terrain,** like the security bulkheads. Colliders, the gas mask and lighting follow automatically. A hole you cut in a door stays when it closes.
+- **`?level=lab`** is a small station that is both the test rig and a sandbox for the loop:
+  - a dark hall with a drifting battery, a socket and a fixture;
+  - a chamber with a roof breach to space, a pump and a ceiling light, all wired through the walls;
+  - a pressurized vault behind a pressure door, holding the salvage core.
+
+**Measured** (`autotest=lab&level=lab`):
+- Plugging the battery in makes the socket live: lights on, pump running.
+- With the breach open, the chamber leaks and only reaches 0.25 gas in 4 s.
+- With the patch welded over the breach (heat the seam, press it on), the chamber fills: 0.26 → 0.39 → 0.52 → 0.66. The pressure door opens 6.8 s after the weld.
+- Unplugging the battery switches everything off.
+
+**Why matter and not a wiring graph:** a cut conduit has to really cut the power, and a welded-in core has to really power what it touches. Keeping power in the pixels means no graph can fall out of sync with the matter. Rendering, robots and devices all read one layer.
+
+**Known flake (pre-existing):** the `rope pivot=nose` phase sometimes misses its harpoon shot (`attached:false`). It does the same at the earlier `playtest-2026-10-12` commit, about 1 run in 3: the core is still drifting from the `com` phase when it fires.
+
+**Revisit if:**
+- Sockets plug in by accident while debris drifts by. If so, require a held or welded body.
+- Batteries should drain. There is no capacity yet.
+- Re-floods get frequent on a big powered network. The fix is to scope the re-flood to the network that touches the changed rect.
+
 ## 2026-10-12 — Robots have organs on a power network (milestone B)
 
 Playtest: the cutter was overpowered against enemies. The fun was in precision cuts: cutting a door free, or drilling to a drone's red core so it drifts. Enemies should have several vulnerable parts (engines, weapons, sensors) shielded from some angles by material that takes more heat.

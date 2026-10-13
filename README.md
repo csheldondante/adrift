@@ -18,6 +18,7 @@ npm run smoke -- <outDir> "autotest=all"   # headless Chrome run with scripted s
 - Default: a **generated derelict**. It's about 512 × 256 m, with 30–36 rooms off a spine from the prow entry to the vault at the far end. Every run is a new ship.
 - `?seed=N`: pin the generator to a specific ship.
 - `?level=classic`: the original small derelict. Autotests use it by default.
+- `?level=lab`: a small station that teaches the systems loop. Weld a patch over the chamber's roof breach. Push the battery into the wall socket to power the lights and the air pump. Once the chamber holds air, its pressure door opens to the vault and the core.
 - `?group.key=value`: override a tunable, e.g. `?grapple.hookSpeed=90`.
 - `?autotest=all|hook|clamp|glow|overview|soak|…`: scripted scenarios for `npm run smoke`.
 

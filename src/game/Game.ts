@@ -18,6 +18,8 @@ import { MAT_RGB } from '../pixel/materials';
 import type { PixelBody } from '../pixel/PixelBody';
 import { PixelWorld } from '../pixel/PixelWorld';
 import { Welder } from '../pixel/Welder';
+import { Devices } from './systems/Devices';
+import { PowerNet } from './systems/PowerNet';
 import { rasterPixels, type InteriorMask } from '../pixel/lightRaster';
 import type { Light, Lighting } from '../render/Lighting';
 import { ORDER } from '../render/order';
@@ -59,6 +61,8 @@ export class Game {
   readonly physics: Physics;
   readonly pixels: PixelWorld;
   readonly welder: Welder;
+  readonly power: PowerNet;
+  readonly devices: Devices;
   readonly ship: Ship;
   readonly particles = new Particles();
   readonly hazards = new Hazards();
@@ -111,6 +115,7 @@ export class Game {
     this.physics = new Physics(FIXED_DT);
     this.pixels = new PixelWorld(this.physics, level.terrain);
     this.welder = new Welder(this.pixels);
+    this.power = new PowerNet(this.pixels);
     this.pixels.terrain.rebuildAllColliders();
     const tg = level.terrain;
     this.worldW = tg.w * CELL;
@@ -173,12 +178,17 @@ export class Game {
         this.particles.debris(x, y, vx + (Math.random() - 0.5) * sp, vy + (Math.random() - 0.5) * sp, MAT_RGB[mat * 3] * k, MAT_RGB[mat * 3 + 1] * k, MAT_RGB[mat * 3 + 2] * k);
       },
       explosiveDestroyed: (x, y) => this.hazards.trigger(x, y),
-      terrainChanged: (r, breach) => field.setSolidFromGrid(tg, r, breach),
+      terrainChanged: (r, breach) => {
+        field.setSolidFromGrid(tg, r, breach);
+        this.power.terrainChanged(r);
+      },
       bodyRemoved: (b) => {
         this.grapple.onBodyRemoved(b);
         this.arms.onBodyRemoved(b);
       },
     };
+    // after the events are wired: doors paint their slabs into the terrain
+    this.devices = new Devices(this.ctx, this.power, level.devices ?? []);
     this.hazards.onExplode = (x, y) => {
       const d = Math.hypot(x - this.ship.x, y - this.ship.y);
       stage.shake(Math.max(0, 0.9 - d / 40));
@@ -384,6 +394,7 @@ export class Game {
     }
     const z = this.objective.zone;
     out.push({ x: (z.x0 + z.x1) / 2, y: (z.y0 + z.y1) / 2, dirX: 0, dirY: 0, cosHalf: -2, range: Math.max(z.x1 - z.x0, z.y1 - z.y0) * 0.8, intensity: 0.45, r: 0.35, g: 1, b: 0.5 });
+    for (const l of this.power.lights) out.push(l);
     for (const f of this.fixedLights) {
       // mostly steady with a slow wobble, and every so often a brief dropout
       const t = this.time + f.phase;
@@ -410,6 +421,8 @@ export class Game {
     this.hazards.update(dt);
     this.pixels.flush();
     this.welder.fixedUpdate();
+    this.power.fixedUpdate();
+    this.devices.fixedUpdate(dt);
     this.machinery.fixedUpdate(dt);
     this.security.fixedUpdate(dt);
     this.projectiles.step(dt);

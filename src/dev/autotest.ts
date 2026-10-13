@@ -5,6 +5,7 @@ import { CELL, tune } from '../config';
 import type { Input } from '../core/Input';
 import type { Game } from '../game/Game';
 import { M } from '../pixel/materials';
+import { LAB } from '../game/level/lab';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const m = (c: number) => c * CELL;
@@ -508,6 +509,76 @@ export async function runAutotest(mode: string, game: () => Game, input: Input, 
         log('bots', g.security.robots.map((r) => [r.alive ? 1 : 0, r.cause, r.pb.alive ? 1 : 0, r.sees ? 1 : 0, +r.thrust.toFixed(2)]));
         await sleep(500);
       }
+    }
+    if (md === 'lab') {
+      // the systems loop on ?level=lab: plug the battery in (lights + pump), see the breach
+      // leak, weld the patch over it, watch the chamber fill and the pressure door open
+      const g = game();
+      const px = g.pixels;
+      const s = { gas: 0, heat: 0, vx: 0, vy: 0 };
+      const gasAt = (cx: number, cy: number) => (g.ctx.field.sample(m(cx), m(cy), s), +s.gas.toFixed(2));
+      const battery = px.bodies.find((b) => b.grid.w === 24 && b.grid.h === 12)!;
+      const patch = px.bodies.find((b) => b.grid.w === 34 && b.grid.h === 10)!;
+      const door = g.devices.doors[0];
+      const settle = (b: typeof battery, x: number, y: number) => {
+        b.body.setTranslation({ x, y }, true);
+        b.body.setRotation(0, true);
+        b.body.setLinvel({ x: 0, y: 0 }, true);
+        b.body.setAngvel(0, true);
+      };
+      place(m(250), m(560), 0);
+      const before = { live: g.power.live, light: g.power.powered(LAB.light.x, LAB.light.y), lights: g.power.lights.length, door: +door.t.toFixed(2) };
+      // plug in: the battery's right terminal against the socket's open face
+      const bx = m(LAB.socket.x - 24 - 0.4);
+      const by = m(LAB.socket.y - 6);
+      for (let k = 0; k < 40; k++) {
+        settle(battery, bx, by);
+        await sleep(16);
+      }
+      const plugged = { live: g.power.live, light: g.power.powered(LAB.light.x, LAB.light.y), lights: g.power.lights.length, pumping: g.devices.pumping };
+      // the pump runs, but the roof breach leaks
+      for (let k = 0; k < 240; k++) {
+        settle(battery, bx, by);
+        await sleep(16);
+      }
+      const leaking = gasAt(520, 400);
+      // weld the patch over the breach from outside: lay it on the roof, heat the seam
+      const pxw = m(548 - 17);
+      const pyw = m(520) + 0.03;
+      const welds0 = g.welder.welds;
+      for (let k = 0; k < 60 && g.welder.welds === welds0; k++) {
+        settle(battery, bx, by);
+        if (patch.alive) settle(patch, pxw, pyw);
+        px.heatCircle(m(548), m(520), 1.6, 0.5);
+        await sleep(16);
+      }
+      const welded = g.welder.welds > welds0;
+      const t0 = performance.now();
+      let openMs = -1;
+      const trace: number[][] = [];
+      let nt = 0;
+      while (performance.now() - t0 < 25000) {
+        settle(battery, bx, by);
+        if (performance.now() - t0 > nt) {
+          nt += 2000;
+          trace.push([Math.round((performance.now() - t0) / 1000), gasAt(520, 400), gasAt(560, 400), +door.t.toFixed(2)]);
+        }
+        if (door.t >= 1 && openMs < 0) {
+          openMs = Math.round(performance.now() - t0);
+          break;
+        }
+        await sleep(16);
+      }
+      log('lab', { before, plugged, leakingGas: leaking, welded, openMs, doorT: +door.t.toFixed(2), vaultGas: gasAt(680, 450), trace });
+      g.zoom = 60;
+      g.debugCamera = { x: m(520), y: m(410) };
+      await sleep(300);
+      await shot('lab');
+      g.debugCamera = null;
+      // unplug: the network drops, the pump stops
+      settle(battery, m(360), m(340));
+      await sleep(400);
+      log('lab-unplug', { live: g.power.live, light: g.power.powered(LAB.light.x, LAB.light.y), pumping: g.devices.pumping });
     }
     if (md === 'organs') {
       // drones are armored at the nose and soft at the back, and their organs need power

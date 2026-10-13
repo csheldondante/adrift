@@ -14,6 +14,7 @@ import { Stage } from './render/Stage';
 import { Game } from './game/Game';
 import { buildDerelict } from './game/level/derelict';
 import { buildDungeon } from './game/level/dungeon';
+import { buildLab } from './game/level/lab';
 import { Hud } from './ui/Hud';
 import { createDebugPanel } from './ui/DebugPanel';
 import { Minimap } from './ui/Minimap';
@@ -43,12 +44,13 @@ async function boot(): Promise<void> {
   const audio = new AudioEngine();
   const app = { stage, field, input, lighting, audio };
 
-  // ?level=classic for the original small derelict (autotests default to it), else a
+  // ?level=classic for the original small derelict (autotests default to it), ?level=lab for
+  // the systems test station (power, pressure, welding), else a
   // generated dungeon; ?seed=N pins the generator, otherwise each run gets a new ship
   const params = new URLSearchParams(location.search);
   const levelName = params.get('level') ?? (params.has('autotest') ? 'classic' : 'dungeon');
   const seedParam = params.get('seed');
-  const buildLevel = () => (levelName === 'classic' ? buildDerelict() : buildDungeon(seedParam ? Number(seedParam) : undefined));
+  const buildLevel = () => (levelName === 'classic' ? buildDerelict() : levelName === 'lab' ? buildLab() : buildDungeon(seedParam ? Number(seedParam) : undefined));
   // level specs aren't kept around: their world-sized grids are only needed to build a run
   const first = buildLevel();
   (window as unknown as { __level: { center: { x: number; y: number } } }).__level = { center: first.center };

@@ -28,6 +28,9 @@ export const M = {
   CONDUIT: 16, // power bus: carries power between cells that conduct
   THRUSTER: 17, // robot engine block: works while powered
   WEAPON: 18, // robot gun / shock prongs: works while powered
+  SOCKET: 19, // wall power socket: live while a powered body's conductor touches it
+  PDOOR: 20, // pressure door slab: the toughest cuttable material; opens on pressure
+  PUMP: 21, // air pump housing: pressurizes its room while powered
 } as const;
 export type MaterialId = (typeof M)[keyof typeof M];
 
@@ -64,7 +67,7 @@ const DEFS: MaterialDef[] = [
   { id: M.CORE, name: 'core', color: [64, 200, 190], variation: 0.12, hp: 1, armor: 0, density: 80, flags: F.SOLID, heatCap: 3, spark: 0.5, load: 1.5 },
   { id: M.GLASS, name: 'glass', color: [120, 190, 230], variation: 0.06, hp: 12, armor: 1, density: 25, flags: F.SOLID, burn: 0.25, heatCap: 0.6, cool: 0.6, spark: 0 },
   { id: M.SCRAP, name: 'scrap', color: [128, 110, 92], variation: 0.2, hp: 40, armor: 1, density: 45, flags: F.SOLID, burn: 0.35, spark: 1 },
-  { id: M.LIGHT, name: 'light', color: [255, 214, 140], variation: 0.05, hp: 20, armor: 1, density: 30, flags: F.SOLID | F.EMISSIVE, burn: 0.3, spark: 0.5 },
+  { id: M.LIGHT, name: 'light', color: [255, 214, 140], variation: 0.05, hp: 20, armor: 1, density: 30, flags: F.SOLID | F.EMISSIVE | F.CONDUCTS, burn: 0.3, spark: 0.5 },
   { id: M.PISTON, name: 'piston', color: [138, 142, 152], variation: 0.06, hp: 400, armor: 1, density: 200, flags: F.SOLID, burn: 1.05, heatCap: 2.6, cool: 0.18, spark: 2.5, load: 2.8 },
   { id: M.STRIPE, name: 'stripe', color: [214, 172, 40], variation: 0.05, hp: 400, armor: 1, density: 200, flags: F.SOLID, burn: 1.05, heatCap: 2.6, cool: 0.18, spark: 2.5, load: 2.8 },
   { id: M.EYE, name: 'eye', color: [255, 196, 90], variation: 0.08, hp: 10, armor: 1, density: 30, flags: F.SOLID | F.EMISSIVE | F.CONDUCTS, burn: 0.3, spark: 0.5 },
@@ -74,6 +77,9 @@ const DEFS: MaterialDef[] = [
   { id: M.CONDUIT, name: 'conduit', color: [196, 112, 52], variation: 0.08, hp: 18, armor: 1, density: 60, flags: F.SOLID | F.CONDUCTS, burn: 0.3, spark: 1.5 },
   { id: M.THRUSTER, name: 'thruster', color: [74, 92, 132], variation: 0.08, hp: 45, armor: 1, density: 70, flags: F.SOLID | F.CONDUCTS, burn: 0.45, spark: 1.2 },
   { id: M.WEAPON, name: 'weapon', color: [150, 64, 170], variation: 0.08, hp: 45, armor: 1, density: 70, flags: F.SOLID | F.CONDUCTS, burn: 0.45, spark: 1.2 },
+  { id: M.SOCKET, name: 'socket', color: [70, 160, 255], variation: 0.06, hp: 120, armor: 1, density: 80, flags: F.SOLID | F.EMISSIVE | F.CONDUCTS, burn: 0.8, heatCap: 1.5, spark: 1.5, load: 1.5 },
+  { id: M.PDOOR, name: 'pressure door', color: [104, 112, 128], variation: 0.04, hp: 650, armor: 1, density: 140, flags: F.SOLID, burn: 1.1, heatCap: 3, cool: 0.14, spark: 3, load: 3 },
+  { id: M.PUMP, name: 'pump', color: [80, 200, 120], variation: 0.08, hp: 60, armor: 1, density: 80, flags: F.SOLID | F.EMISSIVE | F.CONDUCTS, burn: 0.5, spark: 1 },
   { id: M.ARMOR, name: 'armor', color: [52, 56, 66], variation: 0.05, hp: 320, armor: 1, density: 110, flags: F.SOLID, burn: 0.95, heatCap: 2.5, cool: 0.16, spark: 3, load: 2.5 },
 ];
 

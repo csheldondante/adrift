@@ -24,6 +24,18 @@ export interface DoorSpec {
   roomId: number;
 }
 
+/**
+ * Ship systems in the walls (see game/systems/Devices.ts). Cells are terrain cell coords;
+ * points are meters. Doors slide along their long axis.
+ */
+export type DeviceSpec =
+  /** Opens while its motor cell (a conducting cell wired into the network) is powered. */
+  | { type: 'door'; x0: number; y0: number; x1: number; y1: number; motor: P; mat: number }
+  /** Opens while the gas at `sensor` (meters) is at least `open`; closes below `close`. */
+  | { type: 'pressureDoor'; x0: number; y0: number; x1: number; y1: number; sensor: P; open: number; close: number }
+  /** Pours air in at `outlet` (meters) while its pump cell is powered, up to `target` gas. */
+  | { type: 'pump'; cell: P; outlet: P; rate: number; target: number };
+
 /** Things systems spawn at load (meters). Consumed by machinery/security systems as they land. */
 export type EntitySpec =
   | { type: 'securityBot'; x: number; y: number; patrol: P[]; roomId: number }
@@ -57,4 +69,5 @@ export interface LevelSpec {
   rooms: RoomInfo[];
   doors: DoorSpec[];
   entities: EntitySpec[];
+  devices?: DeviceSpec[];
 }

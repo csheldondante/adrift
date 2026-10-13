@@ -13,7 +13,7 @@ Built decisions and their rationale live in `docs/DECISIONS.md`. This file is fo
 
 ## Making it a game: playtest notes and roadmap (user, 2026-10-12)
 
-**Status:** in progress. A (materials and heat) and B (robots with powered organs) built 2026-10-12; see DECISIONS.
+**Status:** in progress. A (materials and heat), B (robots with powered organs) and C (power and pressure in the walls, `?level=lab`) built 2026-10-12; see DECISIONS.
 
 **What works (keep and build on):**
 - The laser cutter: the most fun thing, especially precision cuts.
@@ -205,4 +205,4 @@ These also feed sound by conduction: atmosphere is where you hear things through
 - The nav field is only rebuilt when an alarm starts.
 - Drones exist only during alarms.
 - Gas/heat CPU coupling only works inside the camera band.
-- The rope's pull on the heading varies a lot with the nose pivot (3° to 26°).
+- The rope's pull on the heading varies a lot with the nose pivot (3° to 26°). The `rope pivot=nose` test also misses its shot about 1 run in 3. This predates the 2026-10-12 work.

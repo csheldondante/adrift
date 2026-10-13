@@ -51,6 +51,49 @@ export function energize(g: PixelGrid): boolean {
   return changed;
 }
 
+/**
+ * Sparse re-flood for big grids (the derelict's terrain): floods from `sources` (cell
+ * indices that are live: power cells, sockets with something plugged in) through conducting
+ * cells only, so the cost is the size of the network, not the grid. `prev` is the list this
+ * returned last time; cells no longer reached are switched off. Returns the new powered list
+ * and every cell whose state flipped (callers repaint those).
+ */
+export function energizeFrom(g: PixelGrid, sources: Iterable<number>, prev: number[]): { on: number[]; flipped: number[] } {
+  const { w, mat, powered } = g;
+  const n = w * g.h;
+  const seen = new Set<number>();
+  const on: number[] = [];
+  const st: number[] = [];
+  for (const s of sources) {
+    if (s < 0 || s >= n || seen.has(s) || !(MAT_FLAGS[mat[s]] & F.CONDUCTS)) continue;
+    seen.add(s);
+    st.push(s);
+  }
+  while (st.length) {
+    const i = st.pop()!;
+    on.push(i);
+    const x = i % w;
+    const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w];
+    for (const j of nb) {
+      if (j < 0 || j >= n || seen.has(j) || !(MAT_FLAGS[mat[j]] & F.CONDUCTS)) continue;
+      seen.add(j);
+      st.push(j);
+    }
+  }
+  const flipped: number[] = [];
+  for (const i of prev)
+    if (!seen.has(i) && powered[i]) {
+      powered[i] = 0;
+      flipped.push(i);
+    }
+  for (const i of on)
+    if (!powered[i]) {
+      powered[i] = 1;
+      flipped.push(i);
+    }
+  return { on, flipped };
+}
+
 /** Counts powered cells of a material. */
 export function countPowered(g: PixelGrid, m: number): number {
   let c = 0;

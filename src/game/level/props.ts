@@ -45,3 +45,22 @@ export function salvageCore(): PixelGrid {
   p.seams(0, 0, w, h, M.CORE, 11, 100, 90);
   return g;
 }
+
+/**
+ * A portable power cell: a red POWER core in a hull casing, with conduit terminals at both
+ * ends. Press a terminal against a wall socket (arms or harpoon) to power the socket's network.
+ */
+export function powerCell(): PixelGrid {
+  const w = 24;
+  const h = 12;
+  const g = new PixelGrid(w, h);
+  new Painter(g).rect(2, 0, w - 4, h, M.HULL).rect(5, 3, w - 10, h - 6, M.POWER).rect(0, 4, w, 4, M.CONDUIT).rect(5, 3, w - 10, h - 6, M.POWER);
+  return g;
+}
+
+/** A slab of hull plating for patching breaches (heat the seam, press it on, it welds). */
+export function hullPatch(w: number, h: number): PixelGrid {
+  const g = new PixelGrid(w, h);
+  new Painter(g).rect(0, 0, w, h, M.HULL).seams(0, 0, w, h, M.HULL, 8, 100, 60);
+  return g;
+}
